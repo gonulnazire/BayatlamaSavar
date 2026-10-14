@@ -150,3 +150,37 @@ describe("useProducts — silme ve geri alma", () => {
     expect(stored().products).toEqual([milk, sauce]);
   });
 });
+
+describe("useProducts — güncelleme", () => {
+  test("ürünü listedeki yerini bozmadan günceller", () => {
+    seed([milk, sauce]);
+    const { result } = renderHook(() => useProducts());
+
+    act(() => result.current.updateProduct({ ...milk, shelfLifeDays: 10 }));
+
+    expect(result.current.products).toEqual([
+      { ...milk, shelfLifeDays: 10 },
+      sauce,
+    ]);
+  });
+
+  test("güncellemeyi depoya yazar", () => {
+    seed([milk]);
+    const { result } = renderHook(() => useProducts());
+
+    act(() => result.current.updateProduct({ ...milk, name: "Süt 1L" }));
+
+    expect(stored().products).toEqual([{ ...milk, name: "Süt 1L" }]);
+  });
+
+  test("bulunmayan id'de listeyi değiştirmez", () => {
+    seed([milk]);
+    const { result } = renderHook(() => useProducts());
+
+    act(() =>
+      result.current.updateProduct({ ...sauce, id: "yok", name: "Hayalet" }),
+    );
+
+    expect(result.current.products).toEqual([milk]);
+  });
+});

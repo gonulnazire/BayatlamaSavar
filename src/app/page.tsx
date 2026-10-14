@@ -1,17 +1,29 @@
 "use client";
 
 import { useCallback, useMemo, useState } from "react";
-import { Refrigerator, PackageOpen } from "lucide-react";
-import AddProductForm from "@/components/AddProductForm";
+import { PackageOpen, Refrigerator, SearchX } from "lucide-react";
+import FilterBar from "@/components/FilterBar";
 import ProductCard from "@/components/ProductCard";
+import ProductForm from "@/components/ProductForm";
 import UndoToast from "@/components/UndoToast";
 import type { Product } from "@/types/product";
+import { daysLeft } from "@/lib/date";
+import {
+  countByStatus,
+  filterProducts,
+  type StatusFilter,
+} from "@/lib/product-filter";
 import { useProducts } from "@/lib/storage";
 import { useToday } from "@/lib/useToday";
-import { daysLeft } from "@/lib/date";
 
 export default function Home() {
-  const { products, addProduct, removeProduct, restoreProduct } = useProducts();
+  const {
+    products,
+    addProduct,
+    updateProduct,
+    removeProduct,
+    restoreProduct,
+  } = useProducts();
   const today = useToday();
 
   // Silinen kaydı geri alabilmek için kayıt ve eski sırası tutulur
@@ -19,6 +31,15 @@ export default function Home() {
     product: Product;
     index: number;
   } | null>(null);
+
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [query, setQuery] = useState("");
+  const [status, setStatus] = useState<StatusFilter>("all");
+
+  // Listeden türetilir: düzenlenen ürün silinirse kip kendiliğinden kapanır
+  const editing = editingId
+    ? (products.find((p) => p.id === editingId) ?? null)
+    : null;
 
   const sorted = useMemo(
     () =>
@@ -28,6 +49,25 @@ export default function Home() {
           daysLeft(b.openedAt, b.shelfLifeDays, today),
       ),
     [products, today],
+  );
+
+  const visible = useMemo(
+    () => filterProducts(sorted, { query, status }, today),
+    [sorted, query, status, today],
+  );
+
+  const counts = useMemo(() => countByStatus(products, today), [products, today]);
+
+  const handleSubmit = useCallback(
+    (product: Product) => {
+      if (editing) {
+        updateProduct(product);
+        setEditingId(null);
+      } else {
+        addProduct(product);
+      }
+    },
+    [editing, updateProduct, addProduct],
   );
 
   const handleDelete = useCallback(
@@ -48,8 +88,14 @@ export default function Home() {
 
   const handleDismiss = useCallback(() => setUndoable(null), []);
 
+  const clearFilters = useCallback(() => {
+    setQuery("");
+    setStatus("all");
+  }, []);
+
   // today yalnızca istemcide dolu olur; liste hidrasyondan sonra çizilir
   const ready = today !== "";
+  const isFiltered = query.trim() !== "" || status !== "all";
 
   return (
     <main className="mx-auto w-full max-w-5xl px-4 py-8 sm:px-6 sm:py-12">
@@ -67,36 +113,68 @@ export default function Home() {
         </div>
       </header>
 
-      <AddProductForm today={today} onAdd={addProduct} />
+      <ProductForm
+        key={editing?.id ?? "yeni"}
+        today={today}
+        initial={editing}
+        onSubmit={handleSubmit}
+        onCancel={() => setEditingId(null)}
+      />
 
-      <section className="mt-8">
-        {!ready ? null : sorted.length === 0 ? (
-          <div className="flex flex-col items-center gap-3 rounded-2xl border border-dashed border-slate-800 px-6 py-16 text-center">
-            <PackageOpen size={32} className="text-slate-600" />
-            <p className="text-sm text-slate-400">
-              Henüz takip ettiğin bir ürün yok.
-              <br />
-              Yukarıdan ilk ürününü ekle.
-            </p>
-          </div>
-        ) : (
-          <>
-            <h2 className="mb-4 text-sm font-medium text-slate-400">
-              Takiptekiler ({sorted.length})
-            </h2>
+      {!ready ? null : products.length === 0 ? (
+        <div className="mt-8 flex flex-col items-center gap-3 rounded-2xl border border-dashed border-slate-800 px-6 py-16 text-center">
+          <PackageOpen size={32} className="text-slate-600" />
+          <p className="text-sm text-slate-400">
+            Henüz takip ettiğin bir ürün yok.
+            <br />
+            Yukarıdan ilk ürününü ekle.
+          </p>
+        </div>
+      ) : (
+        <section className="mt-8 flex flex-col gap-5">
+          <FilterBar
+            query={query}
+            status={status}
+            counts={counts}
+            onQueryChange={setQuery}
+            onStatusChange={setStatus}
+          />
+
+          <h2 className="text-sm font-medium text-slate-400">
+            {isFiltered
+              ? `${visible.length} / ${products.length} ürün`
+              : `Takiptekiler (${products.length})`}
+          </h2>
+
+          {visible.length === 0 ? (
+            <div className="flex flex-col items-center gap-3 rounded-2xl border border-dashed border-slate-800 px-6 py-12 text-center">
+              <SearchX size={28} className="text-slate-600" />
+              <p className="text-sm text-slate-400">
+                Bu filtreye uyan ürün yok.
+              </p>
+              <button
+                type="button"
+                onClick={clearFilters}
+                className="rounded-lg border border-slate-700 bg-slate-900/60 px-3 py-1.5 text-sm font-medium text-slate-300 transition hover:bg-slate-800"
+              >
+                Filtreyi temizle
+              </button>
+            </div>
+          ) : (
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {sorted.map((product) => (
+              {visible.map((product) => (
                 <ProductCard
                   key={product.id}
                   product={product}
                   today={today}
+                  onEdit={setEditingId}
                   onDelete={handleDelete}
                 />
               ))}
             </div>
-          </>
-        )}
-      </section>
+          )}
+        </section>
+      )}
 
       {undoable ? (
         <UndoToast

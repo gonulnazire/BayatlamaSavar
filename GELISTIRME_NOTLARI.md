@@ -532,3 +532,124 @@ bakıyor (CLAUDE.md geliştiriciye bakıyor): uygulamanın ne yaptığı, kalan 
 formülü, renk tablosu, geri alma davranışı, kurulum, komut tablosu, dosya
 haritası ve sıradaki işler. Mimari kararlar için `CLAUDE.md`'ye, geliştirme
 kaydı için bu dosyaya yönlendiriyor.
+
+---
+
+## Adım 10 — Ürün düzenleme
+
+**Tarih:** 14 Ekim 2026
+**Hedef:** Yanlış girilen bir kaydı silip yeniden eklemek zorunda kalmamak.
+
+### Tasarım kararı: ayrı pencere değil, formun yeniden kullanımı
+Üç seçenek vardı: kart üzerinde satır içi düzenleme, modal pencere, ya da
+üstteki formun düzenleme kipine geçmesi. Üçüncüsü seçildi çünkü doğrulama,
+alan düzeni ve varsayılanlar tek yerde kalıyor — satır içi düzenleme aynı
+mantığı ikinci kez yazmak demekti.
+
+`AddProductForm` → **`ProductForm`** olarak yeniden adlandırıldı; `initial`
+prop'u doluysa düzenleme kipinde çalışır: başlıkta "«X» düzenleniyor" yazar,
+kenarlığı yeşile döner, buton "Ekle" yerine "Kaydet" olur ve yanına "Vazgeç"
+gelir.
+
+### Prop'tan state doldurmanın tuzağı ve çözümü
+Düzenlemeye basıldığında form alanlarının seçilen üründen dolması gerekiyor.
+Klasik çözüm `useEffect` ile prop'u state'e kopyalamaktır — ama bu projede
+`react-hooks/set-state-in-effect` kuralı bunu **yasaklıyor** (Adım 0'daki
+1 numaralı tuzak).
+
+Çözüm: alanlar `useState` başlangıç değerleriyle `initial`'dan doluyor ve üst
+bileşen forma `key={editing?.id ?? "yeni"}` veriyor. Kayıt değişince React
+formu **yeniden kuruyor**, alanlar kendiliğinden tazeleniyor. Ne effect, ne
+senkronizasyon kodu.
+
+Düzenlenen kayıt `editingId`'den değil, listeden türetiliyor
+(`products.find(...)`). Bunun bedava faydası: düzenlenirken ürün başka bir
+sekmede silinirse düzenleme kipi kendiliğinden kapanıyor.
+
+### TDD akışı
+1. **RED** — `replaceById` için 4 test; `TypeError: replaceById is not a function`.
+2. **GREEN** — `product-list.ts`'e `replaceById` eklendi (sıra korunarak).
+3. `useProducts`'a `updateProduct` eklendi + 3 storage testi.
+4. Bileşen testleri: `ProductForm` için 16 test (9 ekleme + 7 düzenleme kipi),
+   `ProductCard` için düzenle düğmesi testi.
+
+### Tip denetiminin işe yaradığı an
+`ProductCard`'a `onEdit` prop'u eklenince `npx tsc --noEmit` yedi yerde hata
+verdi — hepsi test dosyasındaki eksik prop'lar. Derleyici, testlerin
+güncellenmesi gerektiğini sessizce geçmek yerine tek tek gösterdi.
+
+### Doğrulama
+```
+npm test         → 10 dosya / 118 test (bu adım sonunda), hepsi yeşil
+npx tsc --noEmit → temiz
+npm run lint     → temiz
+npm run build    → başarılı
+```
+
+---
+
+## Adım 11 — Arama ve durum filtresi
+
+**Tarih:** 14 Ekim 2026
+**Hedef:** Liste kalabalıklaştığında aradığını bulabilmek.
+
+### Yapılanlar
+Yeni dosya `src/lib/product-filter.ts` (saf, 14 test):
+
+| Dışa açılan | İşi |
+| --- | --- |
+| `filterProducts(list, {query, status}, today)` | Arama + durum filtresini birlikte uygular |
+| `countByStatus(list, today)` | Düğmelerde gösterilen sayılar |
+| `STATUS_FILTERS`, `STATUS_FILTER_LABELS` | Düğme sırası ve Türkçe etiketler |
+
+Arama ürün adında **ve kategoride** geçer — "sos" yazınca tüm
+Sos/Konserve ürünleri gelir. Durum filtresi eşikleri kopyalamıyor, aynı
+`statusOf()` fonksiyonunu çağırıyor; eşik tek yerde kalıyor.
+
+`src/components/FilterBar.tsx`: arama kutusu (dolu olduğunda temizleme
+düğmesi çıkar) ve dört durum düğmesi, her birinde o duruma düşen ürün sayısı.
+Etkin düğme hem renkle hem `aria-pressed` ile işaretli.
+
+Sayfada iki ayrı boş durum var artık: hiç ürün yoksa "ilk ürününü ekle",
+filtreye uyan yoksa "bu filtreye uyan ürün yok" + "Filtreyi temizle".
+Başlık da filtre varken `3 / 12 ürün` biçimine geçiyor.
+
+### Türkçe harf katlama
+Arama `toLocaleLowerCase("tr")` kullanıyor. Varsayılan `toLowerCase()` ile
+`"ILIK"` → `"ilik"` olur ve `"Ilık"` ile **eşleşmez**; I/ı ve İ/i çiftleri
+yalnızca `tr` yereliyle doğru çalışır. İki test bunu kilitliyor: `"ILIK"` ve
+`"ılık"` sorgularının ikisi de "Ilık Jambon"u buluyor.
+
+### Testin yakaladığı erişilebilirlik kusuru
+Düğmedeki sayı ayrı bir `<span>` olduğu için ekran okuyucunun hesapladığı
+erişilebilir ad **"Tümü5"** çıkıyordu — aradaki boşluk yalnızca CSS kenar
+boşluğuydu, metinde yoktu. Test bunu yakaladı:
+
+```
+Unable to find an accessible element with the role "button" and name /Tümü 5/
+Here are the accessible roles:  Name "Tümü5"
+```
+
+Burada iki yol vardı: testi `/Tümü\s*5/` yapıp geçirmek, ya da kusuru
+düzeltmek. İkincisi seçildi — her düğmeye `aria-label="Tümü, 5 ürün"`
+verildi, görsel metin `aria-hidden` yapıldı. Test gevşetilmedi, kod düzeltildi.
+
+### Doğrulama
+```
+npm test         → Test Files 10 passed (10) | Tests 121 passed (121)
+npx tsc --noEmit → temiz
+npm run lint     → temiz
+npm run build    → başarılı
+GET /            → HTTP 200
+```
+
+Dosya başına dağılım (`grep -c "^  test("` ile sayıldı, toplam 121 ile birebir):
+`product-schema` 22 · `date` 15 · `storage` 15 · `product-list` 14 ·
+`product-filter` 14 · `ProductForm` 16 · `ProductCard` 8 · `FilterBar` 6 ·
+`error` 6 · `UndoToast` 5
+
+### Dokümantasyon güncellendi
+Hem `CLAUDE.md` hem `README.md` bu adımlardan sonra **yanlış** hale gelmişti:
+README "düzenleme ve filtre/arama henüz yok" diyordu, CLAUDE.md'nin test
+tablosu ve yapılmamışlar listesi eskimişti. İkisi de güncellendi; CLAUDE.md'ye
+iki yeni tuzak eklendi (7: `key` ile form tazeleme, 8: Türkçe harf katlama).

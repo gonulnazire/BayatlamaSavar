@@ -53,18 +53,19 @@ types/product.ts          veri modeli (Product, CATEGORIES)
         ↓
 lib/product-schema.ts     doğrulama + şema sürümleme (saf)
 lib/product-list.ts       liste işlemleri, sıra koruyarak (saf)
+lib/product-filter.ts     arama + durum filtresi, sayaçlar (saf)
 lib/date.ts               iş mantığı: kalan gün, durum eşikleri (saf)
         ↓
 lib/storage.ts            localStorage ↔ React köprüsü (useProducts hook'u)
 lib/useToday.ts           bugünün tarihi (useToday hook'u)
         ↓
-components/               sunum: AddProductForm, ProductCard, UndoToast
+components/               sunum: ProductForm, ProductCard, FilterBar, UndoToast
         ↓
 app/page.tsx              durumu birleştiren tek istemci bileşeni
 ```
 
 **Kural:** `lib/` içindeki saf dosyalar (`date`, `product-schema`,
-`product-list`) React'i, DOM'u veya `localStorage`'ı tanımaz — girdi verip çıktı
+`product-list`, `product-filter`) React'i, DOM'u veya `localStorage`'ı tanımaz — girdi verip çıktı
 kontrol edilerek test edilirler. Tek istisna `storage.ts` ve `useToday.ts`:
 bunlar köprü katmanıdır ve DOM'a bağımlıdır. Yeni iş mantığı saf dosyalara
 yazılır, bileşenlere yazılmaz.
@@ -95,6 +96,10 @@ Kalan Gün = (Açılış Tarihi + Raf Ömrü) − Bugün
 
 Eşikler `statusOf()` içinde tek yerde durur ve testle kilitlidir; renk sınıfları
 `ProductCard` içindeki `STATUS_STYLES` tablosundadır.
+
+Arama ürün adında **ve kategoride** geçer; durum filtresi aynı eşikleri
+`statusOf()` üzerinden kullanır, eşik bilgisini kopyalamaz
+(`lib/product-filter.ts`).
 
 Tarih hesapları `Date.UTC`'ye sabitlenir (`lib/date.ts`), yoksa yaz saati
 geçişinde gün kayar. Tarihler her yerde `YYYY-MM-DD` metni olarak taşınır,
@@ -132,22 +137,37 @@ Aşağıdakilerin hepsi bir kez canlı olarak yaşandı; detaylar
 6. **Next 16'da `themeColor` `metadata`'ya değil `viewport` export'una ait**
    (`src/app/layout.tsx`).
 
+7. **Form alanları prop'tan `key` ile doldurulur, effect ile değil.**
+   `ProductForm` düzenleme kipinde alanları `initial` prop'undan doldurur ve
+   bunu `useState` başlangıç değerleriyle yapar. Üst bileşen
+   `key={editing?.id ?? "yeni"}` verir; kayıt değişince form yeniden kurulur ve
+   alanlar kendiliğinden tazelenir. Bu, "prop'tan state türetme" sorununu
+   1 numaralı yasağa girmeden çözer — effect içinde senkronizasyon yazmayın.
+   Düzenlenen kayıt `products` listesinden türetilir (`editingId` → `find`),
+   bu yüzden kayıt silinirse düzenleme kipi kendiliğinden kapanır.
+
+8. **Türkçe arama `toLocaleLowerCase("tr")` ile katlanır** (`lib/product-filter.ts`).
+   Varsayılan `toLowerCase()` ile `"ILIK"` → `"ilik"` olur ve `"Ilık"` ile
+   eşleşmez. I/ı ve İ/i çiftleri yalnızca `tr` yereliyle doğru çalışır.
+
 ## Test yaklaşımı
 
 Vitest **jsdom** ortamında koşar (`vitest.config.mts`), kurulum dosyası
 `src/test/setup.ts` (jest-dom eşleştiricileri, her testten sonra `cleanup()` ve
-`localStorage.clear()`). Desen: `src/**/*.test.{ts,tsx}`. **85 test / 8 dosya:**
+`localStorage.clear()`). Desen: `src/**/*.test.{ts,tsx}`. **121 test / 10 dosya:**
 
 | Dosya | Test | Neyi kapsıyor |
 | --- | --- | --- |
-| `lib/date.test.ts` | 15 | Kalan gün, eşikler, ay/yıl/artık yıl/yaz saati sınırları |
 | `lib/product-schema.test.ts` | 22 | Doğrulama kuralları, şema sürümü, göç |
-| `lib/product-list.test.ts` | 10 | Sıra koruyarak çıkarma/geri koyma |
-| `lib/storage.test.ts` | 12 | `useProducts` hook'u: okuma, göç, ekleme, silme, geri alma, referans kararlılığı |
-| `components/ProductCard.test.tsx` | 7 | Dört durum sınırı, tarih metni, sil çağrısı |
-| `components/AddProductForm.test.tsx` | 8 | Varsayılanlar, kırpma, boş ad reddi, temizlenme |
-| `components/UndoToast.test.tsx` | 5 | Bildirim, erişilebilirlik, 6 sn zamanlayıcı |
+| `lib/date.test.ts` | 15 | Kalan gün, eşikler, ay/yıl/artık yıl/yaz saati sınırları |
+| `lib/storage.test.ts` | 15 | `useProducts`: okuma, göç, ekleme, güncelleme, silme, geri alma, referans kararlılığı |
+| `lib/product-list.test.ts` | 14 | Sıra koruyarak çıkarma/geri koyma/güncelleme |
+| `lib/product-filter.test.ts` | 14 | Arama (Türkçe harf katlama dahil), durum filtresi, sayaçlar |
+| `components/ProductForm.test.tsx` | 16 | Ekleme ve düzenleme kipleri, varsayılanlar, kırpma, boş ad reddi |
+| `components/ProductCard.test.tsx` | 8 | Dört durum sınırı, tarih metni, düzenle/sil çağrıları |
+| `components/FilterBar.test.tsx` | 6 | Arama kutusu, temizleme, durum düğmeleri, erişilebilir adlar |
 | `app/error.test.tsx` | 6 | Hata ekranı, `reset`, `digest` |
+| `components/UndoToast.test.tsx` | 5 | Bildirim, erişilebilirlik, 6 sn zamanlayıcı |
 
 Yeni kod için sıra: **önce kırmızı test, sonra kod.** Mevcut ve doğru çalışan bir
 kod için yazılan test ilk denemede geçer ve hiçbir şey kanıtlamaz; testin bir
@@ -179,5 +199,3 @@ ekler; işinizle birlikte commit'lemek ağacı temiz tutar.
 - Gereksinim dokümanındaki Post-MVP maddeleri: gerçek veritabanı
   (Supabase/PostgreSQL), kullanıcı girişi ile çoklu ev arkadaşı desteği,
   e-posta/push bildirimleri. Hiçbirine başlanmadı.
-- Düzenleme (güncelleme) akışı yok; ürün yalnızca eklenip silinebiliyor.
-- Filtre/arama yok.

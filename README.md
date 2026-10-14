@@ -29,6 +29,13 @@ kalırsa gece yarısı geçildiğinde kalan günler kendiliğinden güncellenir.
 Bir ürünü tükettiğinde "Tükettim / Sil"e basarsın; yanlış bastıysan altta
 6 saniye duran bildirimden **Geri al** ile eski yerine döner.
 
+Kayıtta bir yanlışlık varsa karttaki **Düzenle** ile üstteki form o ürüne
+geçer; kaydettiğinde ürün listedeki yerini kaybetmez.
+
+Liste kalabalıklaştığında **arama kutusu** (ürün adı veya kategori, Türkçe
+harflere duyarlı) ve **durum düğmeleri** (Tümü / Güvenli / Dikkat / Süresi
+Doldu, her birinde kaç ürün olduğu yazılı) işe yarar.
+
 ## Başlatma
 
 Node 24 veya üzeri gerekir.
@@ -83,5 +90,4 @@ Mimari kararlar, veri sözleşmesi ve bu projeye özgü tuzaklar için
 
 Gereksinim dokümanındaki Post-MVP maddeleri: gerçek veritabanı
 (Supabase/PostgreSQL), kullanıcı girişi ile çoklu ev arkadaşı desteği,
-e-posta veya tarayıcı bildirimleri. Ayrıca eklenen ürünü düzenleme ve
-filtre/arama henüz yok.
+e-posta veya tarayıcı bildirimleri.

@@ -3,7 +3,12 @@
 import { useCallback, useSyncExternalStore } from "react";
 import type { Product } from "@/types/product";
 import { parseStoredProducts, serializeProducts } from "@/lib/product-schema";
-import { insertAt, removeById, type RemoveResult } from "@/lib/product-list";
+import {
+  insertAt,
+  removeById,
+  replaceById,
+  type RemoveResult,
+} from "@/lib/product-list";
 
 const STORAGE_KEY = "bayatlamasavar.products";
 const EMPTY: Product[] = [];
@@ -82,5 +87,16 @@ export function useProducts() {
     write(insertAt(getSnapshot(), product, index));
   }, []);
 
-  return { products, addProduct, removeProduct, restoreProduct };
+  /** Kaydı listedeki yerini bozmadan günceller */
+  const updateProduct = useCallback((product: Product) => {
+    write(replaceById(getSnapshot(), product));
+  }, []);
+
+  return {
+    products,
+    addProduct,
+    updateProduct,
+    removeProduct,
+    restoreProduct,
+  };
 }

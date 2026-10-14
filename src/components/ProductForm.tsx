@@ -1,21 +1,41 @@
 "use client";
 
 import { useState } from "react";
-import { Plus } from "lucide-react";
+import { Check, Plus, X } from "lucide-react";
 import { CATEGORIES, type Category, type Product } from "@/types/product";
 
 type Props = {
   /** Varsayılan açılış tarihi (istemcide hesaplanır) */
   today: string;
-  onAdd: (product: Product) => void;
+  /**
+   * Doluysa form düzenleme kipindedir ve alanlar bu kayıttan dolar.
+   * Üst bileşen `key` ile formu yeniden kurar; bu sayede alanları
+   * prop'tan doldurmak için effect içinde setState'e gerek kalmaz.
+   */
+  initial?: Product | null;
+  onSubmit: (product: Product) => void;
+  onCancel?: () => void;
 };
 
-export default function AddProductForm({ today, onAdd }: Props) {
-  const [name, setName] = useState("");
-  const [category, setCategory] = useState<Category>(CATEGORIES[0]);
+export default function ProductForm({
+  today,
+  initial,
+  onSubmit,
+  onCancel,
+}: Props) {
+  const isEditing = Boolean(initial);
+
+  const [name, setName] = useState(initial?.name ?? "");
+  const [category, setCategory] = useState<Category>(
+    initial?.category ?? CATEGORIES[0],
+  );
   // null = "kullanıcı dokunmadı", bugünün tarihi kullanılsın
-  const [openedAtInput, setOpenedAtInput] = useState<string | null>(null);
-  const [shelfLifeDays, setShelfLifeDays] = useState("3");
+  const [openedAtInput, setOpenedAtInput] = useState<string | null>(
+    initial?.openedAt ?? null,
+  );
+  const [shelfLifeDays, setShelfLifeDays] = useState(
+    String(initial?.shelfLifeDays ?? 3),
+  );
 
   const openedAt = openedAtInput ?? today;
 
@@ -25,14 +45,15 @@ export default function AddProductForm({ today, onAdd }: Props) {
     const days = Number(shelfLifeDays);
     if (!trimmed || !openedAt || !Number.isFinite(days) || days < 0) return;
 
-    onAdd({
-      id: crypto.randomUUID(),
+    onSubmit({
+      id: initial?.id ?? crypto.randomUUID(),
       name: trimmed,
       category,
       openedAt,
       shelfLifeDays: Math.floor(days),
     });
 
+    if (isEditing) return; // üst bileşen düzenleme kipini kapatır
     setName("");
     setCategory(CATEGORIES[0]);
     setOpenedAtInput(null);
@@ -46,8 +67,19 @@ export default function AddProductForm({ today, onAdd }: Props) {
   return (
     <form
       onSubmit={handleSubmit}
-      className="rounded-2xl border border-slate-800 bg-slate-900/50 p-4 sm:p-5"
+      aria-label={isEditing ? "Ürünü düzenle" : "Yeni ürün ekle"}
+      className={`rounded-2xl border p-4 transition sm:p-5 ${
+        isEditing
+          ? "border-emerald-500/40 bg-emerald-500/5"
+          : "border-slate-800 bg-slate-900/50"
+      }`}
     >
+      {isEditing ? (
+        <p className="mb-4 text-sm text-emerald-300">
+          <span className="font-semibold">{initial?.name}</span> düzenleniyor
+        </p>
+      ) : null}
+
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <div className="lg:col-span-2">
           <label htmlFor="name" className={labelClass}>
@@ -111,14 +143,25 @@ export default function AddProductForm({ today, onAdd }: Props) {
           />
         </div>
 
-        <div className="sm:col-span-2 lg:col-span-3 lg:self-end">
+        <div className="flex gap-3 sm:col-span-2 lg:col-span-3 lg:self-end">
           <button
             type="submit"
-            className="flex w-full items-center justify-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-emerald-500 active:scale-[0.98]"
+            className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-emerald-500 active:scale-[0.98]"
           >
-            <Plus size={16} />
-            Ekle
+            {isEditing ? <Check size={16} /> : <Plus size={16} />}
+            {isEditing ? "Kaydet" : "Ekle"}
           </button>
+
+          {isEditing ? (
+            <button
+              type="button"
+              onClick={onCancel}
+              className="flex items-center justify-center gap-2 rounded-lg border border-slate-700 bg-slate-900/60 px-4 py-2 text-sm font-medium text-slate-300 transition hover:bg-slate-800 active:scale-[0.98]"
+            >
+              <X size={16} />
+              Vazgeç
+            </button>
+          ) : null}
         </div>
       </div>
     </form>

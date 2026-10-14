@@ -31,3 +31,10 @@ export function insertAt(
   const safeIndex = Math.max(0, Math.min(index, list.length));
   return [...list.slice(0, safeIndex), product, ...list.slice(safeIndex)];
 }
+
+/** Kaydı aynı sırada tutarak günceller; id bulunamazsa liste değişmez */
+export function replaceById(list: Product[], product: Product): Product[] {
+  const index = list.findIndex((item) => item.id === product.id);
+  if (index === -1) return list;
+  return [...list.slice(0, index), product, ...list.slice(index + 1)];
+}

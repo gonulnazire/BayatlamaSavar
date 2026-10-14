@@ -1,6 +1,6 @@
 "use client";
 
-import { Trash2, CalendarDays } from "lucide-react";
+import { Trash2, CalendarDays, Pencil } from "lucide-react";
 import type { Product } from "@/types/product";
 import { daysLeft, formatDate, statusOf, type Status } from "@/lib/date";
 
@@ -8,6 +8,7 @@ type Props = {
   product: Product;
   /** Bugünün tarihi, YYYY-MM-DD */
   today: string;
+  onEdit: (id: string) => void;
   onDelete: (id: string) => void;
 };
 
@@ -38,7 +39,12 @@ function remainingText(days: number): string {
   return `${Math.abs(days)} gün geçti`;
 }
 
-export default function ProductCard({ product, today, onDelete }: Props) {
+export default function ProductCard({
+  product,
+  today,
+  onEdit,
+  onDelete,
+}: Props) {
   const days = daysLeft(product.openedAt, product.shelfLifeDays, today);
   const status = statusOf(days);
   const styles = STATUS_STYLES[status];
@@ -73,14 +79,26 @@ export default function ProductCard({ product, today, onDelete }: Props) {
         </span>
       </div>
 
-      <button
-        type="button"
-        onClick={() => onDelete(product.id)}
-        className="mt-1 flex items-center justify-center gap-2 rounded-lg border border-slate-700 bg-slate-900/60 px-3 py-2 text-sm font-medium text-slate-300 transition hover:border-red-500/50 hover:bg-red-500/10 hover:text-red-300 active:scale-[0.98]"
-      >
-        <Trash2 size={15} />
-        Tükettim / Sil
-      </button>
+      <div className="mt-1 flex gap-2">
+        <button
+          type="button"
+          onClick={() => onEdit(product.id)}
+          aria-label={`${product.name} ürününü düzenle`}
+          className="flex items-center justify-center gap-2 rounded-lg border border-slate-700 bg-slate-900/60 px-3 py-2 text-sm font-medium text-slate-300 transition hover:border-emerald-500/50 hover:bg-emerald-500/10 hover:text-emerald-300 active:scale-[0.98]"
+        >
+          <Pencil size={15} />
+          Düzenle
+        </button>
+
+        <button
+          type="button"
+          onClick={() => onDelete(product.id)}
+          className="flex flex-1 items-center justify-center gap-2 rounded-lg border border-slate-700 bg-slate-900/60 px-3 py-2 text-sm font-medium text-slate-300 transition hover:border-red-500/50 hover:bg-red-500/10 hover:text-red-300 active:scale-[0.98]"
+        >
+          <Trash2 size={15} />
+          Tükettim / Sil
+        </button>
+      </div>
     </article>
   );
 }
