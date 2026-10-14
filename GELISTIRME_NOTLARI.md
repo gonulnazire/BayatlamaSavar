@@ -381,3 +381,53 @@ npx tsc --noEmit → temiz
 npm run lint     → temiz
 npm run build    → başarılı
 ```
+
+---
+
+## Adım 7 — `CLAUDE.md` (proje belleği)
+
+**Tarih:** 14 Ekim 2026
+**Hedef:** Projeye sonradan bakan (insan ya da Claude) birinin aynı tuzaklara
+tekrar düşmemesi.
+
+### Yapılanlar
+`CLAUDE.md` yazıldı (172 satır). İçeriği bilinçli olarak dosya listesi değil,
+**birden fazla dosyayı okumadan anlaşılamayacak** bilgiler:
+
+- Katman şeması ve "saf `lib/` React'i tanımaz" kuralı
+- `localStorage` sözleşmesi: anahtar, biçim, üç sürüm durumu ve
+  "alan değişirse `SCHEMA_VERSION` artır" kuralı
+- İş kuralları: kalan gün formülü, renk eşikleri tablosu, tarihlerin neden
+  `Date.UTC`'ye sabitlendiği, neden `Date` değil `YYYY-MM-DD` metni taşındığı
+- **Bu projede canlı olarak yaşanmış altı tuzak** (her biri bu notların ilgili
+  adımında anlatılan gerçek olaylar)
+- Doğrulanmış komutlar — tek dosya ve tek test çalıştırma dahil, ikisi de
+  yazmadan önce koşulup çıktısı görüldü
+- Bilinen test boşlukları ve henüz yapılmamışlar, gizlenmeden
+
+### `AGENTS.md`'den taşınan kural
+`create-next-app`, `next dev` tarafından yenilenen bir `AGENTS.md` bırakmış ve
+şunu söylüyor: **bu Next.js sürümü eğitim verisindekinden farklı**, Next'e dair
+kod yazmadan önce `node_modules/next/dist/docs/` okunmalı. Bu uyarı
+`CLAUDE.md`'ye alındı — çünkü bu projede yaşanan tuzakların dördü (effect'te
+`setState` yasağı, prerender'da `new Date()` yasağı, `error.tsx`'in kapsamı,
+`themeColor`'ın `viewport`'a taşınması) doğrudan bu sürüm farkının sonucu.
+
+---
+
+## Özet durum — 14 Ekim 2026
+
+| Konu | Durum |
+| --- | --- |
+| Gereksinim dokümanı MVP kapsamı (3.1, 3.2, 3.3, 4) | Tamam |
+| Test altyapısı | Vitest, 47 test, `lib/` tamamen kapsanmış |
+| Veri doğrulama + şema sürümleme | Tamam |
+| Hata sınırı | Dosya yerinde; istemci yakalaması doğrulanmadı |
+| Sürüm kontrolü | 3 anlamlı commit, ağaç temiz |
+| Metadata / ikon / manifest | Tamam, sunulan yanıtta doğrulandı |
+| Geri alınabilir silme | Tamam |
+| Proje belleği (`CLAUDE.md`) | Tamam |
+
+**Açık kalanlar:** bileşen/hook testleri için jsdom kararı · `README.md` hâlâ
+varsayılan · düzenleme akışı · filtre/arama · Post-MVP (veritabanı, giriş,
+bildirimler).
