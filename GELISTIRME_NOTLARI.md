@@ -241,3 +241,143 @@ hatasında ekranda göründüğü.
 
 Bu, bileşen testi altyapısı (jsdom) kararı alınana kadar **açık bir eksik**
 olarak kayda geçer.
+
+---
+
+## Adım 4 — Sürüm kontrolü
+
+**Tarih:** 14 Ekim 2026
+
+### Yapılanlar
+O ana kadarki tüm iş tek bir commit'te kayda geçti:
+
+```
+86466bc  MVP, test altyapısı, veri doğrulama ve hata sınırı
+019e0e5  Initial commit from Create Next App
+```
+
+Commit mesajı yalnızca "ne" değil "neden"i de içeriyor: Next.js 16'nın iki yeni
+kuralının nasıl karşılandığı ve `NaN` kaynaklı sessiz yeşil hatasının ne olduğu
+mesajın gövdesinde yazılı.
+
+### Alınan kararlar
+- **Tek commit, çok commit değil.** Adım 0-3'ün dosyaları birbirine bağımlıydı
+  (`storage.ts` artık `product-schema.ts`'i içe aktarıyor). Yapay olarak
+  bölünse, ara commit'lerin bazıları derlenmeyecekti. Her commit'in kendi
+  başına çalışır olması, sayısından önemli.
+- **Branch açılmadı.** Depo yerel, uzak sunucu (remote) yok, dal `master` ve
+  tek kullanıcı var; dal açmak ardından birleştirme adımı doğuracaktı.
+  Uzak depo eklendiğinde bu alışkanlık değişmeli.
+- Sonraki adımlar ayrı commit'ler aldı.
+
+### Yan iş
+Windows'ta `git add` her dosyada `LF will be replaced by CRLF` uyarısı
+veriyordu. `.gitattributes` eklenerek (`* text=auto eol=lf`) satır sonları
+sabitlendi; ikili dosyalar (`.ico`, `.png`, `.jpg`, `.woff2`) ayrıca işaretlendi.
+
+---
+
+## Adım 5 — Metadata, ikon ve manifest
+
+**Tarih:** 14 Ekim 2026
+**Hedef:** Mobil hedefli bir uygulamanın tarayıcıda ve ana ekranda doğru görünmesi.
+
+### Yapılanlar
+- `public/icon.svg` — koyu zeminde okunan, emerald zeminli zamanlayıcı ikonu.
+  SVG seçildi: tek dosya, her boyutta net, PNG üretme adımı gerekmiyor.
+  `create-next-app`'in varsayılan `favicon.ico`'su silindi.
+- `src/app/manifest.ts` — Next'in metadata dosya kuralıyla
+  `/manifest.webmanifest` üretiliyor: `standalone` görüntüleme, `tr` dili,
+  `#020617` (slate-950) arka plan ve tema rengi.
+- `src/app/layout.tsx` — `metadata` genişletildi (başlık, açıklama,
+  `applicationName`, anahtar kelimeler, ikonlar, `appleWebApp`).
+  Next 16'da `themeColor` artık `metadata` değil **`viewport`** export'una ait;
+  oraya `colorScheme: "dark"` ve `width/initialScale` ile birlikte yazıldı.
+
+### Doğrulama
+Build çıktısında yeni route göründü:
+```
+└ ○ /manifest.webmanifest
+```
+
+Ve gerçekten sunulan yanıt kontrol edildi (derlendiğine güvenmek yerine):
+```
+<title>BayatlamaSavar</title>
+<link rel="icon" href="/icon.svg"/>
+<link rel="apple-touch-icon" href="/icon.svg"/>
+<link rel="manifest" href="/manifest.webmanifest"/>
+<meta name="theme-color" content="#020617"/>
+<meta name="color-scheme" content="dark"/>
+
+GET /manifest.webmanifest → geçerli JSON, tüm alanlar yerinde
+GET /icon.svg            → HTTP 200, image/svg+xml
+```
+
+---
+
+## Adım 6 — Silmede geri alma
+
+**Tarih:** 14 Ekim 2026
+**Hedef:** Yanlış tıklamanın veri kaybına dönüşmemesi.
+
+### Tasarım kararı: onay penceresi değil, geri alma
+Gereksinim dokümanı "kullanıcı bir ürünü eklemek için 5 saniyeden fazla vakit
+harcamamalı" diyor; aynı hız beklentisi silme için de geçerli. Her silmede
+"Emin misiniz?" sorusu, doğru olan %99 durumu da yavaşlatır. Bunun yerine silme
+anında çalışır, altta 6 saniye duran bir bildirim "Geri al" sunar: hızlı yol
+hızlı kalır, hata da telafi edilebilir olur.
+
+### Yapılanlar
+Yeni dosya `src/lib/product-list.ts` (saf fonksiyonlar, 10 test):
+
+| Fonksiyon | İşi |
+| --- | --- |
+| `removeById(list, id)` | Kaydı çıkarır; çıkarılan kaydı **ve eski sırasını** döner |
+| `insertAt(list, product, index)` | Kaydı eski sırasına geri koyar; sıra listenin dışındaysa sınıra çeker |
+
+Eski sıranın saklanması önemli: geri alınan ürün listenin başına değil,
+**bulunduğu yere** döner.
+
+`useProducts()` iki noktada güncellendi: `removeProduct` artık çıkarma sonucunu
+döndürüyor, `restoreProduct` eklendi. `src/components/UndoToast.tsx` ise
+`role="status"` / `aria-live="polite"` ile ekran okuyuculara da bildiriyor ve
+6 saniye sonra kendini kapatıyor. Üst üste silmelerde bildirimin süresi
+sıfırlansın diye bileşene `key={product.id}` verildi.
+
+### TDD akışı
+1. **RED** — `product-list.test.ts` (10 test) var olmayan modüle karşı koşuldu,
+   modül bulunamadı hatasıyla patladı.
+2. **GREEN** — `product-list.ts` yazıldı, 47/47 yeşil.
+3. **REFACTOR** — `storage.ts` ve `page.tsx` bağlandı; testler yeşil kaldı.
+
+### Yol boyunca yakalanan hata
+İlk bağlamada `handleUndo`, `restoreProduct`'ı `setUndoable` **updater'ının
+içinde** çağırıyordu:
+
+```ts
+setUndoable((current) => {
+  if (current) restoreProduct(current.product, current.index);  // yan etki!
+  return null;
+});
+```
+
+React StrictMode (Next.js'te varsayılan olarak açık) updater fonksiyonlarını
+geliştirmede **iki kez** çağırır — yani "Geri al"a bir kez basmak ürünü **iki
+kez** geri eklerdi. Yan etki updater'dan çıkarıldı:
+
+```ts
+if (!undoable) return;
+restoreProduct(undoable.product, undoable.index);
+setUndoable(null);
+```
+
+Bu hata derleyici, lint veya testlerden hiçbirine yakalanmazdı; yalnızca
+updater'ların saf olması gerektiği kuralını bilmekle görülüyor.
+
+### Doğrulama
+```
+npm test         → Test Files 3 passed (3) | Tests 47 passed (47)
+npx tsc --noEmit → temiz
+npm run lint     → temiz
+npm run build    → başarılı
+```

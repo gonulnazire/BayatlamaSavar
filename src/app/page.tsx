@@ -1,16 +1,24 @@
 "use client";
 
-import { useMemo } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { Refrigerator, PackageOpen } from "lucide-react";
 import AddProductForm from "@/components/AddProductForm";
 import ProductCard from "@/components/ProductCard";
+import UndoToast from "@/components/UndoToast";
+import type { Product } from "@/types/product";
 import { useProducts } from "@/lib/storage";
 import { useToday } from "@/lib/useToday";
 import { daysLeft } from "@/lib/date";
 
 export default function Home() {
-  const { products, addProduct, removeProduct } = useProducts();
+  const { products, addProduct, removeProduct, restoreProduct } = useProducts();
   const today = useToday();
+
+  // Silinen kaydı geri alabilmek için kayıt ve eski sırası tutulur
+  const [undoable, setUndoable] = useState<{
+    product: Product;
+    index: number;
+  } | null>(null);
 
   const sorted = useMemo(
     () =>
@@ -21,6 +29,24 @@ export default function Home() {
       ),
     [products, today],
   );
+
+  const handleDelete = useCallback(
+    (id: string) => {
+      const { removed, index } = removeProduct(id);
+      if (removed) setUndoable({ product: removed, index });
+    },
+    [removeProduct],
+  );
+
+  // Yan etki updater'ın içinde olmamalı: StrictMode updater'ları iki kez
+  // çağırır ve ürün iki kez geri eklenirdi.
+  const handleUndo = useCallback(() => {
+    if (!undoable) return;
+    restoreProduct(undoable.product, undoable.index);
+    setUndoable(null);
+  }, [undoable, restoreProduct]);
+
+  const handleDismiss = useCallback(() => setUndoable(null), []);
 
   // today yalnızca istemcide dolu olur; liste hidrasyondan sonra çizilir
   const ready = today !== "";
@@ -64,13 +90,22 @@ export default function Home() {
                   key={product.id}
                   product={product}
                   today={today}
-                  onDelete={removeProduct}
+                  onDelete={handleDelete}
                 />
               ))}
             </div>
           </>
         )}
       </section>
+
+      {undoable ? (
+        <UndoToast
+          key={undoable.product.id}
+          productName={undoable.product.name}
+          onUndo={handleUndo}
+          onDismiss={handleDismiss}
+        />
+      ) : null}
     </main>
   );
 }
