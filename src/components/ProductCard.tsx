@@ -9,7 +9,9 @@ type Props = {
   /** Bugünün tarihi, YYYY-MM-DD */
   today: string;
   onEdit: (id: string) => void;
-  onDelete: (id: string) => void;
+  onConsume: (id: string) => void;
+  /** Yazma uçuştayken düğmeler kilitlenir */
+  disabled?: boolean;
 };
 
 const STATUS_STYLES: Record<
@@ -43,7 +45,8 @@ export default function ProductCard({
   product,
   today,
   onEdit,
-  onDelete,
+  onConsume,
+  disabled = false,
 }: Props) {
   const days = daysLeft(product.openedAt, product.shelfLifeDays, today);
   const status = statusOf(days);
@@ -83,8 +86,9 @@ export default function ProductCard({
         <button
           type="button"
           onClick={() => onEdit(product.id)}
+          disabled={disabled}
           aria-label={`${product.name} ürününü düzenle`}
-          className="flex items-center justify-center gap-2 rounded-lg border border-slate-700 bg-slate-900/60 px-3 py-2 text-sm font-medium text-slate-300 transition hover:border-emerald-500/50 hover:bg-emerald-500/10 hover:text-emerald-300 active:scale-[0.98]"
+          className="flex items-center justify-center gap-2 rounded-lg border border-slate-700 bg-slate-900/60 px-3 py-2 text-sm font-medium text-slate-300 transition hover:border-emerald-500/50 hover:bg-emerald-500/10 hover:text-emerald-300 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
         >
           <Pencil size={15} />
           Düzenle
@@ -92,8 +96,9 @@ export default function ProductCard({
 
         <button
           type="button"
-          onClick={() => onDelete(product.id)}
-          className="flex flex-1 items-center justify-center gap-2 rounded-lg border border-slate-700 bg-slate-900/60 px-3 py-2 text-sm font-medium text-slate-300 transition hover:border-red-500/50 hover:bg-red-500/10 hover:text-red-300 active:scale-[0.98]"
+          onClick={() => onConsume(product.id)}
+          disabled={disabled}
+          className="flex flex-1 items-center justify-center gap-2 rounded-lg border border-slate-700 bg-slate-900/60 px-3 py-2 text-sm font-medium text-slate-300 transition hover:border-red-500/50 hover:bg-red-500/10 hover:text-red-300 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
         >
           <Trash2 size={15} />
           Tükettim / Sil

@@ -1,11 +1,20 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { LogOut, PackageOpen, Refrigerator, SearchX } from "lucide-react";
+import {
+  CloudOff,
+  LogOut,
+  PackageOpen,
+  Refrigerator,
+  RotateCcw,
+  SearchX,
+} from "lucide-react";
 import AuthScreen from "@/components/AuthScreen";
+import ConnectionBanner from "@/components/ConnectionBanner";
 import FilterBar from "@/components/FilterBar";
 import ProductCard from "@/components/ProductCard";
 import ProductForm from "@/components/ProductForm";
+import Toast from "@/components/Toast";
 import UndoToast from "@/components/UndoToast";
 import type { Product } from "@/types/product";
 import { daysLeft } from "@/lib/date";
@@ -22,10 +31,17 @@ import { useToday } from "@/lib/useToday";
 export default function Home() {
   const {
     products,
+    status: syncStatus,
+    saving,
+    error,
+    dropped,
+    cacheWritable,
+    lastSyncedAt,
     addProduct,
     updateProduct,
     consumeProduct,
     restoreProduct,
+    retry,
   } = useProducts();
   const today = useToday();
   const session = useSession();
@@ -89,7 +105,7 @@ export default function Home() {
         await consumeProduct(id);
         setUndoable(target);
       } catch {
-        // Hata store durumunda duruyor; kullanıcıya gösterimi Task 8'de
+        // Hata store durumunda; aşağıdaki Toast gösteriyor
       }
     },
     [products, consumeProduct],
@@ -103,7 +119,7 @@ export default function Home() {
       await restoreProduct(undoable.id);
       setUndoable(null);
     } catch {
-      // Hata store durumunda duruyor; kullanıcıya gösterimi Task 8'de
+      // Hata store durumunda; aşağıdaki Toast gösteriyor
     }
   }, [undoable, restoreProduct]);
 
@@ -167,9 +183,44 @@ export default function Home() {
         initial={editing}
         onSubmit={handleSubmit}
         onCancel={() => setEditingId(null)}
+        saving={saving}
       />
 
-      {!ready ? null : products.length === 0 ? (
+      <div className="mt-6">
+        <ConnectionBanner
+          status={syncStatus}
+          lastSyncedAt={lastSyncedAt}
+          dropped={dropped}
+          cacheWritable={cacheWritable}
+          onRetry={() => void retry()}
+        />
+      </div>
+
+      {!ready ? null : products.length === 0 &&
+        syncStatus === "loading" &&
+        !error ? (
+        <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {[0, 1, 2].map((i) => (
+            <div
+              key={i}
+              className="h-44 animate-pulse rounded-2xl bg-slate-900/60"
+            />
+          ))}
+        </div>
+      ) : products.length === 0 && error ? (
+        <div className="mt-8 flex flex-col items-center gap-3 rounded-2xl border border-dashed border-slate-800 px-6 py-16 text-center">
+          <CloudOff size={32} className="text-slate-600" />
+          <p className="text-sm text-slate-400">{error.message}</p>
+          <button
+            type="button"
+            onClick={() => void retry()}
+            className="flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-emerald-500"
+          >
+            <RotateCcw size={15} />
+            Tekrar dene
+          </button>
+        </div>
+      ) : products.length === 0 ? (
         <div className="mt-8 flex flex-col items-center gap-3 rounded-2xl border border-dashed border-slate-800 px-6 py-16 text-center">
           <PackageOpen size={32} className="text-slate-600" />
           <p className="text-sm text-slate-400">
@@ -216,7 +267,8 @@ export default function Home() {
                   product={product}
                   today={today}
                   onEdit={setEditingId}
-                  onDelete={handleDelete}
+                  onConsume={handleDelete}
+                  disabled={saving}
                 />
               ))}
             </div>
@@ -224,7 +276,14 @@ export default function Home() {
         </section>
       )}
 
-      {undoable ? (
+      {error && products.length > 0 ? (
+        <Toast
+          key={error.message}
+          message={error.message}
+          actionLabel="Tekrar dene"
+          onAction={() => void retry()}
+        />
+      ) : undoable ? (
         <UndoToast
           key={undoable.id}
           productName={undoable.name}

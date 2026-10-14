@@ -13,8 +13,10 @@ type Props = {
    * prop'tan doldurmak için effect içinde setState'e gerek kalmaz.
    */
   initial?: Product | null;
-  onSubmit: (product: Product) => void;
+  onSubmit: (product: Product) => void | Promise<void>;
   onCancel?: () => void;
+  /** Yazma uçuşta: alanlar kilitli, buton devre dışı */
+  saving?: boolean;
 };
 
 export default function ProductForm({
@@ -22,6 +24,7 @@ export default function ProductForm({
   initial,
   onSubmit,
   onCancel,
+  saving = false,
 }: Props) {
   const isEditing = Boolean(initial);
 
@@ -39,19 +42,24 @@ export default function ProductForm({
 
   const openedAt = openedAtInput ?? today;
 
-  function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     const trimmed = name.trim();
     const days = Number(shelfLifeDays);
     if (!trimmed || !openedAt || !Number.isFinite(days) || days < 0) return;
 
-    onSubmit({
-      id: initial?.id ?? crypto.randomUUID(),
-      name: trimmed,
-      category,
-      openedAt,
-      shelfLifeDays: Math.floor(days),
-    });
+    try {
+      await onSubmit({
+        id: initial?.id ?? crypto.randomUUID(),
+        name: trimmed,
+        category,
+        openedAt,
+        shelfLifeDays: Math.floor(days),
+      });
+    } catch {
+      // Kaydedilemediyse alanlar KORUNUR: kullanıcı yazdığını kaybetmesin
+      return;
+    }
 
     if (isEditing) return; // üst bileşen düzenleme kipini kapatır
     setName("");
@@ -66,7 +74,7 @@ export default function ProductForm({
 
   return (
     <form
-      onSubmit={handleSubmit}
+      onSubmit={(e) => void handleSubmit(e)}
       aria-label={isEditing ? "Ürünü düzenle" : "Yeni ürün ekle"}
       className={`rounded-2xl border p-4 transition sm:p-5 ${
         isEditing
@@ -87,6 +95,7 @@ export default function ProductForm({
           </label>
           <input
             id="name"
+            disabled={saving}
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="Örn: Sütaş Süt"
@@ -101,6 +110,7 @@ export default function ProductForm({
           </label>
           <select
             id="category"
+            disabled={saving}
             value={category}
             onChange={(e) => setCategory(e.target.value as Category)}
             className={fieldClass}
@@ -119,6 +129,7 @@ export default function ProductForm({
           </label>
           <input
             id="openedAt"
+            disabled={saving}
             type="date"
             value={openedAt}
             onChange={(e) => setOpenedAtInput(e.target.value)}
@@ -133,6 +144,7 @@ export default function ProductForm({
           </label>
           <input
             id="shelfLife"
+            disabled={saving}
             type="number"
             min={0}
             max={365}
@@ -146,7 +158,8 @@ export default function ProductForm({
         <div className="flex gap-3 sm:col-span-2 lg:col-span-3 lg:self-end">
           <button
             type="submit"
-            className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-emerald-500 active:scale-[0.98]"
+            disabled={saving}
+            className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-emerald-500 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60"
           >
             {isEditing ? <Check size={16} /> : <Plus size={16} />}
             {isEditing ? "Kaydet" : "Ekle"}
