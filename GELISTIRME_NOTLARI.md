@@ -653,3 +653,70 @@ Hem `CLAUDE.md` hem `README.md` bu adımlardan sonra **yanlış** hale gelmişti
 README "düzenleme ve filtre/arama henüz yok" diyordu, CLAUDE.md'nin test
 tablosu ve yapılmamışlar listesi eskimişti. İkisi de güncellendi; CLAUDE.md'ye
 iki yeni tuzak eklendi (7: `key` ile form tazeleme, 8: Türkçe harf katlama).
+
+---
+
+## Adım 12 — Mimari karar ve Supabase göç tasarımı (kod yazılmadı)
+
+**Tarih:** 14 Ekim 2026
+**Hedef:** Backend/veritabanı yönünü karara bağlamak ve göçü kod yazmadan önce
+tasarlamak.
+
+### Mimari özet çıkarıldı
+`MIMARI_KARARI.md` yazıldı: mevcut mimarinin tam resmi (katmanlar, satır
+sayıları), backend ve veritabanının **hiç olmadığının** açık tespiti, mevcut
+mimarinin gerçek sınırları ve dört seçeneğin iş/kazanç/bedel karşılaştırması.
+
+En belirleyici bulgu: **`localStorage`'a dokunan tek dosya `storage.ts`.**
+Soyutlama zaten yerinde olduğu için backend'e geçiş "her yeri elden geçirmek"
+değil, bir dosyanın içini değiştirmek. Saf katmandaki 65 test de olduğu gibi
+geçerli kalıyor, çünkü verinin nereden geldiğini bilmiyorlar.
+
+Ayrıca netleşti ki backend'e geçmenin sebebi **ölçek değil**: `localStorage`
+~5 MB, binlerce ürün sığar. Sebep çok cihaz, yedek, paylaşım ve bildirim.
+
+### Karar: Supabase
+Gereksinim dokümanındaki Post-MVP maddelerinin üçü (veritabanı, çoklu ev
+arkadaşı, bildirim) tek bir altyapıyı istiyor.
+
+### Tasarım görüşmesi (architectural akış)
+Bu iş architectural sınıfında olduğu için kod yazmadan önce sorular →
+yaklaşımlar → bölüm bölüm tasarım → yazılı spec sırası izlendi. Netleşenler:
+
+| Konu | Karar |
+| --- | --- |
+| Kullanım | Tek kullanıcı, çok cihaz; paylaşım ileride |
+| Şema | "Tek kişilik ev" — `households` baştan var, paylaşım göç gerektirmeden eklenir |
+| Çevrimdışı | Yerel önbellek + çevrimiçi yazma (mevcut çevrimdışı deneyim geriletilmiyor) |
+| Giriş | E-posta + şifre, doğrulama kapalı |
+| Veri katmanı | Tarayıcı doğrudan Supabase ile konuşur; `useSyncExternalStore` deseni korunur |
+| Mevcut veri | Otomatik değil, tek seferlik aktarım düğmesi |
+| Silme | Soft delete (`consumed_at`) |
+| Yazma | Beklemeli, iyimser değil (rollback mantığı yazmamak için) |
+
+Kapsam dışı tutulanlar açıkça yazıldı: paylaşım arayüzü, realtime, bildirimler,
+tüketildi/çöpe atıldı ayrımı, middleware, otomatik yeniden deneme.
+
+### Tasarımın iki kazancı
+- **Enjeksiyon:** `product-store.ts` API'yi parametre alacak. Senkron mantığı
+  ağa dokunmadan test edilebilir hale geliyor.
+- **Eski boşluk kapanıyor:** Adım 8'de "`page.tsx` bütünleşme testi yok" diye
+  kayda geçen madde, enjeksiyon sayesinde ucuzladı ve göçün kapsamına alındı.
+
+Soft delete ayrıca kod *azaltıyor*: "Geri al" artık sıra numarasıyla diziye
+geri sokmak değil, tek alan güncellemesi — `insertAt` tamamen siliniyor.
+
+### Spec öz-incelemesinde bulunan iki kusur
+Skill'in istediği öz-inceleme boş bir tören olmadı, iki gerçek kusur çıktı:
+
+1. **`security definer` fonksiyonda `search_path` sabitlenmemişti.** Bu haliyle
+   çağıran kendi şemasına aynı adlı bir tablo koyup fonksiyonu kandırabilir.
+   `set search_path = ''` eklendi ve tablo adları tam nitelikli yazıldı.
+2. **`household_id`'nin nereden geldiği hiç tanımlanmamıştı.** Her `insert`
+   bunu istiyor ama istemci bilmiyordu. Oturum hazır olunca bir kez
+   `fetchHouseholdId()` çağrılması, sonucun store'da tutulması ve boş gelirse
+   sessizce `null` göndermek yerine açık hata verilmesi eklendi.
+
+### Durum
+Spec: `docs/superpowers/specs/2026-10-14-supabase-gocu-design.md` (403 satır).
+**Kod yazılmadı.** Sıra: kullanıcının spec'i incelemesi → uygulama planı → kod.
