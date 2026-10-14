@@ -1,6 +1,6 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, test, vi } from "vitest";
+import { beforeEach, describe, expect, test, vi } from "vitest";
 import Home from "@/app/page";
 import { StoresProvider, type Stores } from "@/app/providers";
 import { createProductStore } from "@/lib/product-store";
@@ -41,6 +41,25 @@ function stubSession(state: SessionState): SessionStore {
   };
 }
 
+/** Oturum geçişlerini sürebilen session store (C2 için) */
+function controllableSession(initial: SessionState) {
+  let state = initial;
+  const listeners = new Set<() => void>();
+  return {
+    store: {
+      subscribe(listener: () => void) {
+        listeners.add(listener);
+        return () => listeners.delete(listener);
+      },
+      getSnapshot: () => state,
+    } as SessionStore,
+    set(next: SessionState) {
+      state = next;
+      for (const listener of listeners) listener();
+    },
+  };
+}
+
 function renderHome(
   api: ProductApi = fakeApi(),
   session: SessionState = { status: "signedIn", userId: USER, email: "a@b.c" },
@@ -56,6 +75,10 @@ function renderHome(
   );
   return stores;
 }
+
+beforeEach(() => {
+  vi.spyOn(console, "error").mockImplementation(() => {});
+});
 
 describe("Ana sayfa — bütünleşme", () => {
   test("oturum yoksa giriş ekranı çizilir", () => {
@@ -168,5 +191,42 @@ describe("Ana sayfa — bütünleşme", () => {
       ).not.toBeInTheDocument();
     });
     expect(api.insertProducts).toHaveBeenCalledOnce();
+  });
+});
+
+describe("Ana sayfa — oturum geçişleri", () => {
+  test("cikis + ayni hesapla tekrar giris: uygulama kilitlenmez", async () => {
+    // C2: initializedFor ref'i eski userId'yi tuttugu icin init hic kosmuyor,
+    // sayfa sonsuza kadar iskelet gosteriyor ve Ekle hicbir sey yapmiyordu
+    const api = fakeApi();
+    const products = createProductStore(api, productCache);
+    const session = controllableSession({
+      status: "signedIn",
+      userId: USER,
+      email: "a@b.c",
+    });
+
+    render(
+      <StoresProvider value={{ products, session: session.store }}>
+        <Home />
+      </StoresProvider>,
+    );
+
+    expect(await screen.findByText("Sütaş Süt")).toBeInTheDocument();
+
+    // Cikis
+    products.reset();
+    session.set({ status: "signedOut" });
+    expect(
+      await screen.findByRole("button", { name: "Giriş yap" }),
+    ).toBeInTheDocument();
+
+    // AYNI hesapla tekrar giris
+    session.set({ status: "signedIn", userId: USER, email: "a@b.c" });
+
+    expect(await screen.findByText("Sütaş Süt")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByLabelText("Ürün Adı")).toBeInTheDocument();
+    });
   });
 });

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   CloudOff,
   LogOut,
@@ -50,13 +50,12 @@ export default function Home() {
   const session = useSession();
   const { products: store } = useStores();
 
-  // Oturum hazır olunca store'u bir kez başlat. Bileşen state'i değişmediği
-  // için "effect içinde setState" yasağına girmiyor.
-  const initializedFor = useRef<string | null>(null);
+  // Oturum hazır olunca store'u başlat. Tekrar koşmasını engelleyen guard
+  // store'un İÇİNDE: bileşen tarafında bir ref olarak durduğunda, çıkış
+  // yapıp aynı hesapla tekrar girince ref eski değeri taşıyor ve init hiç
+  // koşmuyordu. Bileşen state'i değişmediği için effect yasağına girmiyor.
   useEffect(() => {
     if (session.status !== "signedIn") return;
-    if (initializedFor.current === session.userId) return;
-    initializedFor.current = session.userId;
     void store.init(session.userId);
   }, [session, store]);
 

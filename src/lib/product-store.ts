@@ -39,16 +39,43 @@ export type ProductStore = {
 /**
  * Hata sınıflandırması. `auth` ayrımı önemli: kullanıcıya "kaydedilemedi"
  * demek yerine "oturumun sona erdi" diyebilmenin tek yolu bu.
+ *
+ * PostgREST hataları `status` yerine `code` taşıyabilir, bu yüzden ikisine de
+ * bakılır. `product-api.ts` bu alanları koruyarak gerçek bir `Error`'a
+ * çeviriyor; çevirmeden önce bu fonksiyonun tüm dalları ölü koddu.
  */
 function classifyError(error: unknown): StoreError {
-  const status = (error as { status?: unknown } | null)?.status;
-  if (status === 401 || status === 403) {
+  // Spec §7: teknik detay yalnızca console'a. postgrest'in `hint` alanı
+  // sıkça doğrudan çözümü taşıyor; atmak teşhisi imkansızlaştırır.
+  console.error("BayatlamaSavar veri hatası:", error);
+
+  const raw = (error ?? {}) as { status?: unknown; code?: unknown };
+  const status = raw.status;
+  const code = typeof raw.code === "string" ? raw.code : "";
+
+  // PGRST301/302: JWT süresi/geçersizliği. 42501: RLS reddi — oturum gidince
+  // supabase-js sessizce anon anahtarına düşer ve bu kod gelir.
+  if (
+    status === 401 ||
+    status === 403 ||
+    code === "PGRST301" ||
+    code === "PGRST302" ||
+    code === "42501"
+  ) {
     return { kind: "auth", message: "Oturumun sona erdi, tekrar giriş yap." };
   }
 
   const message = error instanceof Error ? error.message : String(error);
-  if (error instanceof TypeError || /fetch|network/i.test(message)) {
+  // postgrest ağ hatasını status 0 ile işaretler
+  if (status === 0 || error instanceof TypeError || /fetch|network/i.test(message)) {
     return { kind: "network", message: "Bağlantı kurulamadı." };
+  }
+
+  if (code === "NO_ROWS_AFFECTED") {
+    return {
+      kind: "unknown",
+      message: "Kaydedilemedi: sunucu bu değişikliği kabul etmedi.",
+    };
   }
 
   return { kind: "unknown", message: "Beklenmeyen bir hata oluştu." };
@@ -83,6 +110,13 @@ export function createProductStore(
 
   let householdId: string | null = null;
   let userId: string | null = null;
+  /**
+   * Hangi kullanıcı için başlatıldığını store'un KENDİSİ tutar.
+   * Bu guard bileşen tarafında bir ref olarak durduğunda, çıkış yapıp aynı
+   * hesapla tekrar girince ref eski değeri taşıdığı için `init` hiç
+   * koşmuyordu ve uygulama sonsuza kadar iskelette kalıyordu.
+   */
+  let initializedFor: string | null = null;
 
   function emit(): void {
     for (const listener of listeners) listener();
@@ -102,6 +136,25 @@ export function createProductStore(
     if (!householdId) return;
     try {
       const { products, dropped } = await api.fetchProducts(householdId);
+
+      // Oturum sekme açıkken ölürse supabase-js anon anahtarına düşer ve
+      // sorgu HATASIZ [] döner. Bunu doğru kabul etmek kullanıcıya uyarısız
+      // boş liste gösterip çevrimdışı önbelleği silmek demek. Boş sonuç
+      // geldiğinde evin hâlâ görünür olduğunu teyit ediyoruz.
+      if (products.length === 0) {
+        const stillVisible = await api.fetchHouseholdId();
+        if (!stillVisible) {
+          set({
+            status: "offline",
+            error: {
+              kind: "auth",
+              message: "Oturumun sona erdi, tekrar giriş yap.",
+            },
+          });
+          return;
+        }
+      }
+
       const written = cache.write(products);
       set({
         products,
@@ -130,6 +183,8 @@ export function createProductStore(
   }
 
   async function init(user: string): Promise<void> {
+    if (initializedFor === user && householdId) return;
+    initializedFor = user;
     userId = user;
     set({ legacyCount: cache.readLegacy().length });
 

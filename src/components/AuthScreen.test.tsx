@@ -1,6 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, test, vi } from "vitest";
+import { beforeEach, describe, expect, test, vi } from "vitest";
 import AuthScreen from "@/components/AuthScreen";
 
 function setup(overrides: {
@@ -12,6 +12,11 @@ function setup(overrides: {
   render(<AuthScreen onSignIn={onSignIn} onSignUp={onSignUp} />);
   return { onSignIn, onSignUp };
 }
+
+beforeEach(() => {
+  // Hata yolu bilinçli olarak console'a yazıyor; test çıktısı kirlenmesin
+  vi.spyOn(console, "error").mockImplementation(() => {});
+});
 
 describe("AuthScreen", () => {
   test("varsayılan olarak giriş kipinde açılır", () => {

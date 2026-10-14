@@ -26,7 +26,10 @@ create table public.products (
                     ('Süt Ürünü','Sos/Konserve','Et/Şarküteri','Diğer')),
   opened_at       date not null,                 -- YYYY-MM-DD; saat dilimi taşımaz
   shelf_life_days int  not null check (shelf_life_days between 0 and 365),
-  created_by      uuid not null references auth.users,
+  -- on delete cascade ZORUNLU: aksi halde NO ACTION FK kullanıcı silmeyi
+  -- REDDEDER (panelden hesap silinemez) ve ev üyesiz kalıp her politikaya
+  -- görünmez hale gelir.
+  created_by      uuid not null references auth.users on delete cascade,
   created_at      timestamptz not null default now(),
   consumed_at     timestamptz                    -- null = hâlâ takipte (soft delete)
 );

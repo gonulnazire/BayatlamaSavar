@@ -26,7 +26,9 @@ export default function AuthScreen({ onSignIn, onSignUp }: Props) {
     try {
       if (isSignUp) await onSignUp(trimmedEmail, password);
       else await onSignIn(trimmedEmail, password);
-    } catch {
+    } catch (caught) {
+      // Spec §7: teknik detay yalnızca console'a
+      console.error("BayatlamaSavar kimlik hatası:", caught);
       setError(
         isSignUp
           ? "Kayıt olunamadı. E-postanı ve şifreni kontrol et."

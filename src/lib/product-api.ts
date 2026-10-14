@@ -51,6 +51,49 @@ export function toRow(
   };
 }
 
+/**
+ * PostgREST hatası bir `Error` DEĞİL, gövdeden ayrıştırılmış düz bir nesnedir
+ * (`{message, details, hint, code}`) ve `status` yanıtın kardeş alanındadır.
+ * Olduğu gibi fırlatılırsa çağıran taraf ne `instanceof Error` ne `status`
+ * görebilir — hata sınıflandırması bu yüzden sessizce çalışmaz hale gelir.
+ * Bu yüzden gerçek bir `Error`'a çevirip tüm alanları taşıyoruz.
+ */
+export type ApiError = Error & {
+  status?: number;
+  code?: string;
+  details?: string | null;
+  hint?: string | null;
+};
+
+export function toApiError(error: unknown, status?: number): ApiError {
+  const raw = (error ?? {}) as {
+    message?: unknown;
+    code?: unknown;
+    details?: unknown;
+    hint?: unknown;
+  };
+  const message =
+    typeof raw.message === "string" && raw.message
+      ? raw.message
+      : "Bilinmeyen sunucu hatası";
+
+  return Object.assign(new Error(message), {
+    status,
+    code: typeof raw.code === "string" ? raw.code : undefined,
+    details: typeof raw.details === "string" ? raw.details : null,
+    hint: typeof raw.hint === "string" ? raw.hint : null,
+  }) as ApiError;
+}
+
+/** RLS engellediğinde PostgREST hata vermez, 0 satır etkiler */
+function assertAffected(rows: unknown, what: string): void {
+  if (Array.isArray(rows) && rows.length > 0) return;
+  throw Object.assign(
+    new Error(`${what}: hiçbir satır güncellenmedi (yetki veya kayıt yok)`),
+    { code: "NO_ROWS_AFFECTED" },
+  ) as ApiError;
+}
+
 export type ProductApi = {
   fetchHouseholdId(): Promise<string | null>;
   fetchProducts(
@@ -73,23 +116,23 @@ export type ProductApi = {
 export function createProductApi(client: SupabaseClient): ProductApi {
   return {
     async fetchHouseholdId() {
-      const { data, error } = await client
+      const { data, error, status } = await client
         .from("household_members")
         .select("household_id")
         .limit(1)
         .maybeSingle();
-      if (error) throw error;
+      if (error) throw toApiError(error, status);
       const row = data as { household_id?: unknown } | null;
       return typeof row?.household_id === "string" ? row.household_id : null;
     },
 
     async fetchProducts(householdId) {
-      const { data, error } = await client
+      const { data, error, status } = await client
         .from("products")
         .select("*")
         .eq("household_id", householdId)
         .is("consumed_at", null);
-      if (error) throw error;
+      if (error) throw toApiError(error, status);
 
       const products: Product[] = [];
       let dropped = 0;
@@ -102,25 +145,25 @@ export function createProductApi(client: SupabaseClient): ProductApi {
     },
 
     async insertProduct(product, householdId, userId) {
-      const { error } = await client
+      const { error, status } = await client
         .from("products")
         .insert(toRow(product, householdId, userId));
-      if (error) throw error;
+      if (error) throw toApiError(error, status);
     },
 
     async insertProducts(products, householdId, userId) {
       if (products.length === 0) return;
-      const { error } = await client
+      const { error, status } = await client
         .from("products")
         .upsert(
           products.map((p) => toRow(p, householdId, userId)),
           { onConflict: "id", ignoreDuplicates: true },
         );
-      if (error) throw error;
+      if (error) throw toApiError(error, status);
     },
 
     async updateProduct(product) {
-      const { error } = await client
+      const { data, error, status } = await client
         .from("products")
         .update({
           name: product.name,
@@ -128,16 +171,23 @@ export function createProductApi(client: SupabaseClient): ProductApi {
           opened_at: product.openedAt,
           shelf_life_days: product.shelfLifeDays,
         })
-        .eq("id", product.id);
-      if (error) throw error;
+        .eq("id", product.id)
+        .select("id");
+      if (error) throw toApiError(error, status);
+      // "Kaydedildi" demenin tek dayanağı bu: oturum gitmişse supabase-js
+      // sessizce anon anahtarına düşer, RLS satırı filtreler ve PostgREST
+      // hatasız 204 döner — kontrol edilmezse yazılmamış veri kaydedilmiş sanılır.
+      assertAffected(data, "Ürün güncellenemedi");
     },
 
     async setConsumedAt(id, value) {
-      const { error } = await client
+      const { data, error, status } = await client
         .from("products")
         .update({ consumed_at: value })
-        .eq("id", id);
-      if (error) throw error;
+        .eq("id", id)
+        .select("id");
+      if (error) throw toApiError(error, status);
+      assertAffected(data, "Ürün durumu güncellenemedi");
     },
   };
 }

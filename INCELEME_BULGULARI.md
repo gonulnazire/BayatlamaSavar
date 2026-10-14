@@ -1,7 +1,26 @@
 # Dal İncelemesi — `supabase-gocu`
 
 **14 Ekim 2026** · Taze bağlamlı gözden geçirici (Opus), 11 commit / ~154 KB diff
-**Sonuç: BİRLEŞTİRİLMEYE HAZIR DEĞİL.** Düzeltme turu yapılmadı (kullanım limiti).
+**Düzeltme turu tamamlandı (14 Ekim 2026).** 2 Critical + 7 Important'tan
+**8'i düzeltildi**, I7 gerekçeli olarak ertelendi, 10 Minor'dan M1 Important'a
+yükseltilip düzeltildi. Test 176 → **198**, dörtlü doğrulama yeşil.
+
+Her düzeltme önce kırmızı test ile kanıtlandı; ayrıntılar
+`.superpowers/sdd/2026-10-14-supabase-gocu/progress.md` ledger'ında.
+
+| Bulgu | Durum |
+| --- | --- |
+| C1 hata sınıflandırması ölü kod | **düzeltildi** — `toApiError` status/code/hint'i koruyor, `classifyError` `code`'a da bakıyor |
+| C2 çıkış + aynı hesapla giriş kilitleniyor | **düzeltildi** — guard bileşen ref'inden store'un içine taşındı |
+| I1 UPDATE doğrulanmıyor | **düzeltildi** — `.select("id")` + 0 satırda fırlatma |
+| I2 boş sonuç doğru sanılıyor | **düzeltildi** — boş listede ev görünürlüğü teyit ediliyor |
+| I3 `getSession` reddinde sonsuz iskelet | **düzeltildi** — `.catch` → `signedOut` |
+| I4 önbellek yalnızca düğmede temizleniyor | **düzeltildi** — `onSignedOut` oturum geçişine bağlandı |
+| I5 teknik detay yutuluyor | **düzeltildi** — `classifyError` ve `AuthScreen` console'a yazıyor |
+| I6 `void signOut()` yüzen rejection | **düzeltildi** — `signOut` fırlatmıyor, logluyor |
+| I7 eski düzenleme yenisini eziyor | **ertelendi (ruling)** — eşzamanlılık belirteci tek kullanıcıda orantısız |
+| M1 hesap silme reddediliyor | **düzeltildi** — `created_by` FK'sine `on delete cascade` |
+| M2–M10 | ertelendi |
 
 Yeniden derecelendirmem: **I1 → Critical.** Ölçüt spec'in sessizliği değil
 kullanıcının eline geçen sonuç: "kaydedildi" denip hiçbir şey yazılmamış olması

@@ -77,3 +77,55 @@ describe("session store", () => {
     expect(unsubscribe).toHaveBeenCalledOnce();
   });
 });
+
+describe("session store — dayanıklılık", () => {
+  test("getSession reddedilirse signedOut olur, iskelette kalmaz", async () => {
+    // I3: .catch yoktu; uygulama sonsuza kadar iskelet gösteriyordu
+    const auth: SupabaseAuthLike = {
+      getSession: vi.fn(async () => {
+        throw new Error("Acquiring an exclusive Navigator LockManager failed");
+      }),
+      onAuthStateChange: () => ({
+        data: { subscription: { unsubscribe: vi.fn() } },
+      }),
+    };
+    const store = createSessionStore(auth);
+    store.subscribe(() => {});
+
+    await vi.waitFor(() => {
+      expect(store.getSnapshot().status).toBe("signedOut");
+    });
+  });
+
+  test("SIGNED_OUT olayında onSignedOut çağrılır", async () => {
+    // I4: onbellek temizligi yalnizca Cikis dugmesindeydi; auth-js kendi
+    // basina SIGNED_OUT yayarsa onceki kullanicinin urunleri kaliyordu
+    const { auth, handlers } = fakeAuth({ user: USER });
+    const onSignedOut = vi.fn();
+    const store = createSessionStore(auth, onSignedOut);
+    store.subscribe(() => {});
+
+    await vi.waitFor(() => {
+      expect(store.getSnapshot().status).toBe("signedIn");
+    });
+
+    handlers[0]("SIGNED_OUT", null);
+
+    expect(onSignedOut).toHaveBeenCalledOnce();
+  });
+
+  test("signedIn kalırken onSignedOut çağrılmaz", async () => {
+    const { auth, handlers } = fakeAuth({ user: USER });
+    const onSignedOut = vi.fn();
+    const store = createSessionStore(auth, onSignedOut);
+    store.subscribe(() => {});
+
+    await vi.waitFor(() => {
+      expect(store.getSnapshot().status).toBe("signedIn");
+    });
+
+    handlers[0]("TOKEN_REFRESHED", { user: USER });
+
+    expect(onSignedOut).not.toHaveBeenCalled();
+  });
+});

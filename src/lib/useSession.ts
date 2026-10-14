@@ -38,13 +38,19 @@ function toState(session: SessionLike): SessionState {
   };
 }
 
-export function createSessionStore(auth: SupabaseAuthLike): SessionStore {
+export function createSessionStore(
+  auth: SupabaseAuthLike,
+  /** Oturum herhangi bir sebeple sona erdiğinde çağrılır (yalnızca düğme değil) */
+  onSignedOut?: () => void,
+): SessionStore {
   let snapshot: SessionState = UNKNOWN;
   const listeners = new Set<() => void>();
   let subscription: { unsubscribe(): void } | null = null;
 
   function set(next: SessionState): void {
+    const wasSignedIn = snapshot.status === "signedIn";
     snapshot = next;
+    if (wasSignedIn && next.status === "signedOut") onSignedOut?.();
     for (const listener of listeners) listener();
   }
 
@@ -54,7 +60,16 @@ export function createSessionStore(auth: SupabaseAuthLike): SessionStore {
 
       // İlk aboneyle başlat: oturumu oku ve auth olaylarını dinle
       if (listeners.size === 1) {
-        void auth.getSession().then(({ data }) => set(toState(data.session)));
+        // .catch şart: reddedilirse (auth-js kilit zaman aşımı, engellenmiş
+        // depolama) durum UNKNOWN kalır ve kullanıcı sonsuza kadar iskelet
+        // görür — giriş ekranına hiç yol yoktur.
+        void auth
+          .getSession()
+          .then(({ data }) => set(toState(data.session)))
+          .catch((error) => {
+            console.error("BayatlamaSavar oturum okunamadı:", error);
+            set(SIGNED_OUT);
+          });
         subscription = auth.onAuthStateChange((_event, session) => {
           set(toState(session));
         }).data.subscription;
@@ -75,11 +90,17 @@ export function createSessionStore(auth: SupabaseAuthLike): SessionStore {
   };
 }
 
-export const sessionStore: SessionStore = createSessionStore({
-  getSession: () => getSupabaseClient().auth.getSession(),
-  onAuthStateChange: (handler) =>
-    getSupabaseClient().auth.onAuthStateChange(handler),
-});
+export const sessionStore: SessionStore = createSessionStore(
+  {
+    getSession: () => getSupabaseClient().auth.getSession(),
+    onAuthStateChange: (handler) =>
+      getSupabaseClient().auth.onAuthStateChange(handler),
+  },
+  // Oturum nasıl sona ererse ersin önbellek temizlenir: başka sekmede çıkış
+  // ya da yenileme hatası da dahil. Yalnızca düğmeye bağlı olsa, önceki
+  // kullanıcının ürünleri yeni hesapta bir an görünebilirdi.
+  () => productStore.reset(),
+)
 
 function getServerSnapshot(): SessionState {
   return UNKNOWN;
@@ -107,9 +128,12 @@ export async function signUp(email: string, password: string): Promise<void> {
   if (error) throw error;
 }
 
-/** Çıkışta önbellek de temizlenir: başka hesap girerse eski ürünler görünmesin */
+/**
+ * Çıkış. Hata fırlatmaz: auth-js yerel oturumu her durumda siliyor, bu yüzden
+ * kullanıcı zaten çıkmış olur. Fırlatsaydı çağrı yerinde yüzen bir rejection
+ * bırakırdı. Önbellek temizliği `onSignedOut` üzerinden yapılır.
+ */
 export async function signOut(): Promise<void> {
   const { error } = await getSupabaseClient().auth.signOut();
-  productStore.reset();
-  if (error) throw error;
+  if (error) console.error("BayatlamaSavar çıkış hatası:", error);
 }

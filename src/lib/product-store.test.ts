@@ -52,6 +52,8 @@ function seedLegacy(products: Product[]): void {
 
 beforeEach(() => {
   vi.restoreAllMocks();
+  // Hata yolları bilinçli olarak console'a yazıyor; test çıktısı kirlenmesin
+  vi.spyOn(console, "error").mockImplementation(() => {});
 });
 
 describe("product-store — okuma", () => {
@@ -445,5 +447,155 @@ describe("product-store — aktarım", () => {
     expect(
       (api.fetchProducts as ReturnType<typeof vi.fn>).mock.calls.length,
     ).toBeGreaterThan(before);
+  });
+});
+
+describe("product-store — gerçek Supabase hata şekilleri", () => {
+  function apiThatThrows(error: unknown): ProductApi {
+    return fakeApi({
+      insertProduct: vi.fn(async () => {
+        throw error;
+      }),
+    });
+  }
+
+  async function errorKindFor(error: unknown) {
+    const store = createProductStore(apiThatThrows(error), productCache);
+    await store.init(USER);
+    await store.addProduct(sauce).catch(() => {});
+    return store.getSnapshot().error?.kind;
+  }
+
+  test("PGRST301 (JWT expired) auth olarak sınıflanır", async () => {
+    expect(
+      await errorKindFor(
+        Object.assign(new Error("JWT expired"), {
+          status: 401,
+          code: "PGRST301",
+        }),
+      ),
+    ).toBe("auth");
+  });
+
+  test("status taşımayan PGRST301 de auth olarak sınıflanır", async () => {
+    expect(
+      await errorKindFor(
+        Object.assign(new Error("JWT expired"), { code: "PGRST301" }),
+      ),
+    ).toBe("auth");
+  });
+
+  test("42501 (RLS reddi) auth olarak sınıflanır", async () => {
+    // Oturum gidince supabase-js sessizce anon anahtarına düşer ve bu kod gelir
+    expect(
+      await errorKindFor(
+        Object.assign(new Error("new row violates row-level security policy"), {
+          status: 403,
+          code: "42501",
+        }),
+      ),
+    ).toBe("auth");
+  });
+
+  test("postgrest'in status 0 ağ işareti network olarak sınıflanır", async () => {
+    expect(
+      await errorKindFor(
+        Object.assign(new Error("TypeError: Failed to fetch"), {
+          status: 0,
+          code: "",
+        }),
+      ),
+    ).toBe("network");
+  });
+
+  test("tanınmayan hata unknown kalır", async () => {
+    expect(
+      await errorKindFor(
+        Object.assign(new Error("duplicate key"), {
+          status: 409,
+          code: "23505",
+        }),
+      ),
+    ).toBe("unknown");
+  });
+
+  test("teknik detay console'a bildirilir", async () => {
+    const error = Object.assign(new Error("JWT expired"), {
+      status: 401,
+      code: "PGRST301",
+      hint: "Refresh the token",
+    });
+    await errorKindFor(error);
+    expect(console.error).toHaveBeenCalledWith(expect.any(String), error);
+  });
+});
+
+describe("product-store — oturum yeniden açıldığında", () => {
+  test("reset sonrası AYNI userId ile init tekrar çalışır", async () => {
+    // C2: cikis + ayni hesapla tekrar giris uygulamayi kilitliyordu
+    const api = fakeApi();
+    const store = createProductStore(api, productCache);
+
+    await store.init(USER);
+    expect(store.getSnapshot().status).toBe("ready");
+
+    store.reset();
+    expect(store.getSnapshot().status).toBe("loading");
+
+    await store.init(USER);
+    expect(store.getSnapshot().status).toBe("ready");
+    expect(store.getSnapshot().products).toEqual([milk]);
+  });
+
+  test("reset sonrası yazma yeniden çalışır", async () => {
+    const api = fakeApi();
+    const store = createProductStore(api, productCache);
+    await store.init(USER);
+    store.reset();
+    await store.init(USER);
+
+    await expect(store.addProduct(sauce)).resolves.toBeUndefined();
+  });
+});
+
+describe("product-store — oturum sessizce öldüğünde", () => {
+  test("boş liste + ev artık görünmüyorsa auth hatası verir ve önbelleği KORUR", async () => {
+    // I2: oturum olmadan sorgu [] ve hatasiz doner; bunu dogru kabul etmek
+    // kullaniciya uyarisiz bos liste gosterir ve onbellegi silerdi
+    let alive = true;
+    const api = fakeApi({
+      fetchHouseholdId: vi.fn(async () => (alive ? HOUSEHOLD : null)),
+      fetchProducts: vi.fn(async () =>
+        alive
+          ? { products: [milk, sauce], dropped: 0 }
+          : { products: [], dropped: 0 },
+      ),
+    });
+    const store = createProductStore(api, productCache);
+
+    // Oturum canlıyken liste yüklenir ve önbelleğe yazılır
+    await store.init(USER);
+    expect(productCache.read()).toEqual([milk, sauce]);
+
+    // Oturum sessizce ölür: sorgu hatasız [] döner
+    alive = false;
+    await store.retry();
+
+    expect(store.getSnapshot().error?.kind).toBe("auth");
+    expect(store.getSnapshot().status).toBe("offline");
+    expect(productCache.read()).toEqual([milk, sauce]);
+  });
+
+  test("gerçekten boş liste (ev görünüyor) ready kabul edilir", async () => {
+    const api = fakeApi({
+      fetchProducts: vi.fn(async () => ({ products: [], dropped: 0 })),
+    });
+    const store = createProductStore(api, productCache);
+
+    await store.init(USER);
+
+    expect(store.getSnapshot().status).toBe("ready");
+    expect(store.getSnapshot().error).toBeNull();
+    expect(store.getSnapshot().products).toEqual([]);
   });
 });
