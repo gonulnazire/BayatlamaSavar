@@ -193,9 +193,22 @@ Son test **Review Focus 5**'i pinler: `toRow({openedAt: "2026-10-14"}, ...).open
 Run: `npm test -- src/lib/product-api.test.ts`
 Expected: FAIL — `Failed to resolve import "@/lib/product-api"`
 
-- [ ] **Step 4: `supabase/client.ts` yaz**
+- [ ] **Step 4: `supabase/client.ts` yaz — istemci TEMBEL oluşturulmalı**
 
-`createClient` ile tek örnek. İki env değişkeni okunur; **biri eksikse açık bir `Error` fırlatılır** (spec bölüm 7: "sessizce patlamaz"), mesaj `.env.local.example`'a yönlendirir.
+```ts
+function getSupabaseClient(): SupabaseClient;   // ilk çağrıda oluşturur
+```
+
+**Modül yüklenirken `createClient` çağrılmaz ve env doğrulaması yapılmaz.**
+Sebep: `page.tsx` bu modülü dolaylı olarak içe aktarıyor; doğrulama modül
+gövdesinde olursa `next build` sayfayı prerender ederken env yoksa **build
+kırılır**. Doğrulama ilk `getSupabaseClient()` çağrısına ertelenir; prerender
+hiç çağırmaz, çünkü store yalnızca istemcide oturum hazır olunca başlatılır.
+
+Eksik env'de fırlatılan `Error` mesajı `.env.local.example`'a yönlendirir
+(spec bölüm 7: "sessizce patlamaz").
+
+Bu adımın doğrulaması: `.env.local` **olmadan** `npm run build` yeşil geçmeli.
 
 - [ ] **Step 5: `product-api.ts` yaz**
 
