@@ -124,6 +124,12 @@ koyup fonksiyonu kandırabilir.
 Env (`.env.local`, örnek: `.env.local.example`): `NEXT_PUBLIC_SUPABASE_URL`,
 `NEXT_PUBLIC_SUPABASE_ANON_KEY`. `service_role` anahtarı istemciye **hiç girmez**.
 
+Kurulum adımları [`KURULUM.md`](KURULUM.md)'de. İki doğrulama komutu:
+`npm run doctor` (env, şema, "Confirm email", tetikleyici, yazma yolu) ve
+`npm run rls-check` (iki test hesabıyla veri yalıtımı). **RLS'in engellediği
+`UPDATE`/`DELETE` hata vermez, 0 satır etkiler** — bu yüzden `rls-check`
+"hata geldi mi" değil "satır etkilendi mi ve veri değişmemiş mi" diye bakar.
+
 ### İş kuralları
 
 ```
@@ -275,5 +281,5 @@ ekler; işinizle birlikte commit'lemek ağacı temiz tutar.
 - **Tüketildi / çöpe atıldı ayrımı.** Arayüzde tek düğme var; ayrım için
   ek kolon gerekir.
 - **Tam çevrimdışı yazma.** Bugün yazma çevrimiçi gerektiriyor.
-- **RLS politikalarının otomatik testi** — Docker + Supabase CLI gerektirir;
-  bugün elle doğrulanıyor (spec bölüm 9).
+- **RLS'in CI içinde test edilmesi** — `npm run rls-check` gerçek bir projeye
+  karşı koşuyor; Docker + Supabase CLI ile CI'da koşturmak ayrı bir iş.

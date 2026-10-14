@@ -48,10 +48,13 @@ cp .env.local.example .env.local   # iki değeri Supabase panelinden doldur
 npm run dev
 ```
 
-`.env.local` içine Supabase projenizin `NEXT_PUBLIC_SUPABASE_URL` ve
-`NEXT_PUBLIC_SUPABASE_ANON_KEY` değerleri girilir (Supabase panelinde
-Project Settings → API). Şema `supabase/migrations/` altındaki SQL dosyasıyla
-kurulur; Authentication → Sign In / Up altında "Confirm email" kapatılmalıdır.
+**Supabase kurulumu için adım adım rehber: [`KURULUM.md`](KURULUM.md)**
+(~10 dakika). Kurulumdan sonra iki komut her şeyi doğrular:
+
+```bash
+npm run doctor      # env, şema, "Confirm email", kayıt tetikleyicisi, yazma yolu
+npm run rls-check   # güvenlik: iki hesapla veri yalıtımı (atlanamaz)
+```
 
 İlk açılışta e-posta ve şifreyle kayıt olup giriş yapılır. Tarayıcıda eski
 sürümden kalan ürünler varsa üstte bir şerit çıkar ve tek tıkla hesabına

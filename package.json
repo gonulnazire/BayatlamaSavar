@@ -8,7 +8,9 @@
     "start": "next start",
     "lint": "eslint",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "doctor": "node scripts/doctor.mjs",
+    "rls-check": "node scripts/rls-check.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.117.3",
