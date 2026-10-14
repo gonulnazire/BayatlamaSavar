@@ -1,7 +1,8 @@
 "use client";
 
 import { useSyncExternalStore } from "react";
-import { productStore, type StoreSnapshot } from "@/lib/product-store";
+import { type StoreSnapshot } from "@/lib/product-store";
+import { useStores } from "@/app/providers";
 
 /** Prerender'da localStorage ve oturum yok; sabit bir boş durum döner */
 const SERVER_SNAPSHOT: StoreSnapshot = {
@@ -24,19 +25,21 @@ function getServerSnapshot(): StoreSnapshot {
  * zaten kararlı; `useCallback` gerekmez.
  */
 export function useProducts() {
+  const { products: store } = useStores();
+
   const snapshot = useSyncExternalStore(
-    productStore.subscribe,
-    productStore.getSnapshot,
+    store.subscribe,
+    store.getSnapshot,
     getServerSnapshot,
   );
 
   return {
     ...snapshot,
-    addProduct: productStore.addProduct,
-    updateProduct: productStore.updateProduct,
-    consumeProduct: productStore.consumeProduct,
-    restoreProduct: productStore.restoreProduct,
-    retry: productStore.retry,
-    importLegacy: productStore.importLegacy,
+    addProduct: store.addProduct,
+    updateProduct: store.updateProduct,
+    consumeProduct: store.consumeProduct,
+    restoreProduct: store.restoreProduct,
+    retry: store.retry,
+    importLegacy: store.importLegacy,
   };
 }

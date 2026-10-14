@@ -3,6 +3,7 @@
 import { useSyncExternalStore } from "react";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { productStore } from "@/lib/product-store";
+import { useStores } from "@/app/providers";
 
 export type SessionState =
   | { status: "unknown" }
@@ -74,7 +75,7 @@ export function createSessionStore(auth: SupabaseAuthLike): SessionStore {
   };
 }
 
-const sessionStore = createSessionStore({
+export const sessionStore: SessionStore = createSessionStore({
   getSession: () => getSupabaseClient().auth.getSession(),
   onAuthStateChange: (handler) =>
     getSupabaseClient().auth.onAuthStateChange(handler),
@@ -85,9 +86,10 @@ function getServerSnapshot(): SessionState {
 }
 
 export function useSession(): SessionState {
+  const { session } = useStores();
   return useSyncExternalStore(
-    sessionStore.subscribe,
-    sessionStore.getSnapshot,
+    session.subscribe,
+    session.getSnapshot,
     getServerSnapshot,
   );
 }

@@ -24,8 +24,8 @@ import {
   filterProducts,
   type StatusFilter,
 } from "@/lib/product-filter";
-import { productStore } from "@/lib/product-store";
 import { signIn, signOut, signUp, useSession } from "@/lib/useSession";
+import { useStores } from "@/app/providers";
 import { useProducts } from "@/lib/storage";
 import { useToday } from "@/lib/useToday";
 
@@ -48,6 +48,7 @@ export default function Home() {
   } = useProducts();
   const today = useToday();
   const session = useSession();
+  const { products: store } = useStores();
 
   // Oturum hazır olunca store'u bir kez başlat. Bileşen state'i değişmediği
   // için "effect içinde setState" yasağına girmiyor.
@@ -56,8 +57,8 @@ export default function Home() {
     if (session.status !== "signedIn") return;
     if (initializedFor.current === session.userId) return;
     initializedFor.current = session.userId;
-    void productStore.init(session.userId);
-  }, [session]);
+    void store.init(session.userId);
+  }, [session, store]);
 
   // Geri alma için silinen kaydın kendisi tutulur; soft delete sayesinde
   // sıra numarası gerekmiyor, liste zaten aciliyete göre sıralanıyor.
@@ -90,13 +91,16 @@ export default function Home() {
 
   const counts = useMemo(() => countByStatus(products, today), [products, today]);
 
+  // await ŞART: etmezse ProductForm yazmayı başarılı sanar ve alanları
+  // temizler, kullanıcı da yazdığını kaybeder. Hata yukarı fırlatılır;
+  // formdaki try/catch alanları korur, Toast hatayı gösterir.
   const handleSubmit = useCallback(
-    (product: Product) => {
+    async (product: Product) => {
       if (editing) {
-        updateProduct(product);
+        await updateProduct(product);
         setEditingId(null);
       } else {
-        addProduct(product);
+        await addProduct(product);
       }
     },
     [editing, updateProduct, addProduct],
