@@ -720,3 +720,67 @@ Skill'in istediği öz-inceleme boş bir tören olmadı, iki gerçek kusur çık
 ### Durum
 Spec: `docs/superpowers/specs/2026-10-14-supabase-gocu-design.md` (403 satır).
 **Kod yazılmadı.** Sıra: kullanıcının spec'i incelemesi → uygulama planı → kod.
+
+---
+
+## Adım 13 — Supabase göçü uygulandı (Task 1-11)
+
+**Tarih:** 14 Ekim 2026
+**Dal:** `supabase-gocu` (master'da uygulamaya başlanmadı)
+
+### Ne yapıldı
+Spec ve plan bir önceki adımda yazılmıştı; bu adımda plan 12 task halinde
+yürütüldü. 11 task tamamlandı, Task 12 (elle RLS doğrulaması) kullanıcı
+eylemi bekliyor.
+
+| Task | Sonuç |
+| --- | --- |
+| 1 | SQL şema + RLS + kayıt tetikleyicisi; `.env.local.example`. **Panelde uygulanması kullanıcıda** |
+| 2 | Tembel Supabase istemcisi + `product-api` çevrimi (7 test) |
+| 3 | `product-cache` — önbellek/eski veri anahtar ayrımı (9 test) |
+| 4 | `product-store` — senkron çekirdeği, sahte API ile (28 test) |
+| 5 | `useProducts` store üzerine taşındı, `insertAt` kaldırıldı |
+| 6 | `useSession` + `AuthScreen` + oturum kapısı (11 test) |
+| 7 | `Toast` genelleştirmesi + `ConnectionBanner` (11 test) |
+| 8 | Yükleme/hata/bekleyen yazma durumları (3 yeni test) |
+| 9 | Tek seferlik aktarım, 200'lük parçalar (8 test) |
+| 10 | Uçtan uca bütünleşme testleri (8 test) |
+| 11 | Dokümantasyon tazelemesi |
+
+**Test: 121 → 176.** Dörtlü doğrulama (test/tsc/lint/build) her task sonunda
+yeşil geçti.
+
+### Yol boyunca yakalanan dört gerçek hata
+
+1. **`.gitignore`'daki `.env*` örnek dosyayı da yoksayıyordu** — planın commit
+   adımı dosyayı sessizce atlardı. Negatif desen eklendi; `.env.local`'in
+   kendisinin yoksayılmaya devam ettiği `git status` ile doğrulandı
+   (`git check-ignore`'un çıkış kodu negatif desenlerde yanıltıcı).
+
+2. **`retry()` içinde `this.init(...)`** — `useProducts` eylemleri destructure
+   edeceği için bağlam kaybolup çağrı çökerdi. Testler nesne üzerinden
+   çağırdığı için yakalamazdı; `this` kaldırıldı ve regresyon testi eklendi.
+
+3. **`providers.tsx` ↔ `useSession.ts` döngüsel içe aktarımı** — varsayılan
+   store nesnesi modül gövdesinde kurulduğu için yükleme sırası ters olsa
+   `sessionStore` tanımsız yakalanırdı. Tembel hale getirildi.
+
+4. **`page.tsx` yazmayı `await` etmiyordu** (en önemlisi) — `ProductForm`
+   `await onSubmit(...)` ettiği için reddedilen promise yüzen hata olarak
+   kalıyor, form yazmayı **başarılı sanıp alanları temizliyordu.** Yani
+   "kullanıcı yazdığını kaybetmesin" koruması sayfa seviyesinde etkisizdi.
+   Formun izole birim testi bunu yakalayamazdı; **bütünleşme testi yakaladı.**
+   Bu, Task 10'un kendi maliyetini tek başına ödediği an.
+
+### Süreç notu
+Task 8'de brief'in adım sırası bozuldu (kod testten önce yazıldı). Düzeltme
+uydurulmadı: testler yazılıp yeni davranışlar geçici olarak söküldü, üçünün de
+kırmızı olduğu görüldü, sonra implementasyon geri konuldu. Bütün kararlar
+(7 ruling) `.superpowers/sdd/.../progress.md` ledger'ında kayıtlı.
+
+### Açık kalanlar
+- **Task 12: elle RLS doğrulaması** — iki hesapla 6 maddelik liste. RLS bu
+  uygulamada tek güvenlik sınırı olduğu için bu adım atlanamaz.
+- Kullanıcı eylemleri: Supabase projesi, SQL'in uygulanması, "Confirm email"
+  kapatılması, `.env.local`.
+- Dal `supabase-gocu` henüz `master`'a birleştirilmedi.

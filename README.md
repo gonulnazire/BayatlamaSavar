@@ -4,8 +4,10 @@ Buzdolabında ya da mutfakta **ambalajı açıldıktan sonra** raf ömrü kısal
 gıdaları (süt, yoğurt, salça, soslar) takip eder; hangisinin ne zaman
 tükenmesi gerektiğini renklerle gösterip gıda israfını önler.
 
-Veri tarayıcıda (`localStorage`) durur: hesap açmak, sunucu kurmak veya
-internete bağlı olmak gerekmez.
+Veri **hesabına bağlı** olarak Supabase'de durur: telefonda eklediğini
+bilgisayarda görürsün, tarayıcı verisi temizlense bile ürünlerin kaybolmaz.
+Bağlantı yokken liste yine görünür (son bilinen hali), ama ekleme ve silme
+için bağlantı gerekir.
 
 ## Nasıl çalışır
 
@@ -42,8 +44,18 @@ Node 24 veya üzeri gerekir.
 
 ```bash
 npm install
+cp .env.local.example .env.local   # iki değeri Supabase panelinden doldur
 npm run dev
 ```
+
+`.env.local` içine Supabase projenizin `NEXT_PUBLIC_SUPABASE_URL` ve
+`NEXT_PUBLIC_SUPABASE_ANON_KEY` değerleri girilir (Supabase panelinde
+Project Settings → API). Şema `supabase/migrations/` altındaki SQL dosyasıyla
+kurulur; Authentication → Sign In / Up altında "Confirm email" kapatılmalıdır.
+
+İlk açılışta e-posta ve şifreyle kayıt olup giriş yapılır. Tarayıcıda eski
+sürümden kalan ürünler varsa üstte bir şerit çıkar ve tek tıkla hesabına
+aktarılır.
 
 Ardından http://localhost:3000 adresini aç.
 
@@ -69,16 +81,17 @@ npx vitest run -t "negatif raf ömrünü reddeder"
 ## Yığın
 
 Next.js 16 (App Router) · React 19 · Tailwind CSS 4 · TypeScript ·
-Vitest + React Testing Library · lucide-react
+Supabase (Postgres + Auth) · Vitest + React Testing Library · lucide-react
 
-Sunucu tarafı mantık yoktur; sayfa statik olarak üretilir ve tüm iş tarayıcıda
-yapılır.
+Sunucu tarafı mantık yoktur; sayfa statik olarak üretilir, tarayıcı doğrudan
+Supabase ile konuşur ve erişim veritabanı seviyesinde (RLS) kısıtlanır.
 
 ## Dosyalar
 
 - `src/types/` — veri modeli
-- `src/lib/` — iş mantığı ve kalıcılık (React'ten bağımsız saf fonksiyonlar +
-  `localStorage` köprüsü)
+- `src/lib/` — iş mantığı, Supabase erişimi ve önbellek (React'ten bağımsız
+  saf fonksiyonlar + senkron çekirdeği)
+- `supabase/migrations/` — veritabanı şeması ve RLS politikaları
 - `src/components/` — arayüz bileşenleri
 - `src/app/` — sayfa, düzen, hata ekranı, manifest
 
@@ -88,6 +101,5 @@ Mimari kararlar, veri sözleşmesi ve bu projeye özgü tuzaklar için
 
 ## Sırada ne var
 
-Gereksinim dokümanındaki Post-MVP maddeleri: gerçek veritabanı
-(Supabase/PostgreSQL), kullanıcı girişi ile çoklu ev arkadaşı desteği,
-e-posta veya tarayıcı bildirimleri.
+Veritabanı ve kullanıcı girişi tamam. Sırada: ev arkadaşı paylaşımı (şema
+hazır, arayüz yok), e-posta/push bildirimleri ve tam çevrimdışı yazma.
