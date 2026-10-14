@@ -1,36 +1,87 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# BayatlamaSavar
 
-## Getting Started
+Buzdolabında ya da mutfakta **ambalajı açıldıktan sonra** raf ömrü kısalan
+gıdaları (süt, yoğurt, salça, soslar) takip eder; hangisinin ne zaman
+tükenmesi gerektiğini renklerle gösterip gıda israfını önler.
 
-First, run the development server:
+Veri tarayıcıda (`localStorage`) durur: hesap açmak, sunucu kurmak veya
+internete bağlı olmak gerekmez.
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+## Nasıl çalışır
+
+Her ürün için tek bir hesap yapılır:
+
+```
+Kalan Gün = (Açılış Tarihi + Raf Ömrü) − Bugün
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Kart rengi bu sonuca göre belirlenir:
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+| Kalan gün | Durum | Renk |
+| --- | --- | --- |
+| 3 veya daha fazla | Güvenli | 🟢 yeşil |
+| 1–2 gün | Dikkat | 🟡 sarı |
+| 0 veya geçmiş | Süresi Doldu | 🔴 kırmızı |
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Liste her zaman **en acil ürün en üstte** olacak şekilde sıralanır. Sayfa açık
+kalırsa gece yarısı geçildiğinde kalan günler kendiliğinden güncellenir.
 
-## Learn More
+Bir ürünü tükettiğinde "Tükettim / Sil"e basarsın; yanlış bastıysan altta
+6 saniye duran bildirimden **Geri al** ile eski yerine döner.
 
-To learn more about Next.js, take a look at the following resources:
+## Başlatma
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+Node 24 veya üzeri gerekir.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+```bash
+npm install
+npm run dev
+```
 
-## Deploy on Vercel
+Ardından http://localhost:3000 adresini aç.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Komutlar
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+| Komut | İşi |
+| --- | --- |
+| `npm run dev` | Geliştirme sunucusu (Turbopack) |
+| `npm run build` | Production build |
+| `npm start` | Build'i sunar |
+| `npm test` | Testler (Vitest), tek seferlik |
+| `npm run test:watch` | Testler, izleme kipinde |
+| `npm run lint` | ESLint |
+| `npx tsc --noEmit` | Tip kontrolü |
+
+Tek dosya ya da tek test çalıştırmak için:
+
+```bash
+npm test -- src/lib/date.test.ts
+npx vitest run -t "negatif raf ömrünü reddeder"
+```
+
+## Yığın
+
+Next.js 16 (App Router) · React 19 · Tailwind CSS 4 · TypeScript ·
+Vitest + React Testing Library · lucide-react
+
+Sunucu tarafı mantık yoktur; sayfa statik olarak üretilir ve tüm iş tarayıcıda
+yapılır.
+
+## Dosyalar
+
+- `src/types/` — veri modeli
+- `src/lib/` — iş mantığı ve kalıcılık (React'ten bağımsız saf fonksiyonlar +
+  `localStorage` köprüsü)
+- `src/components/` — arayüz bileşenleri
+- `src/app/` — sayfa, düzen, hata ekranı, manifest
+
+Mimari kararlar, veri sözleşmesi ve bu projeye özgü tuzaklar için
+[`CLAUDE.md`](CLAUDE.md); adım adım geliştirme kaydı için
+[`GELISTIRME_NOTLARI.md`](GELISTIRME_NOTLARI.md).
+
+## Sırada ne var
+
+Gereksinim dokümanındaki Post-MVP maddeleri: gerçek veritabanı
+(Supabase/PostgreSQL), kullanıcı girişi ile çoklu ev arkadaşı desteği,
+e-posta veya tarayıcı bildirimleri. Ayrıca eklenen ürünü düzenleme ve
+filtre/arama henüz yok.

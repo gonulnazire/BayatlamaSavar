@@ -431,3 +431,104 @@ kod yazmadan önce `node_modules/next/dist/docs/` okunmalı. Bu uyarı
 **Açık kalanlar:** bileşen/hook testleri için jsdom kararı · `README.md` hâlâ
 varsayılan · düzenleme akışı · filtre/arama · Post-MVP (veritabanı, giriş,
 bildirimler).
+
+---
+
+## Adım 8 — Bileşen ve hook testleri (jsdom)
+
+**Tarih:** 14 Ekim 2026
+**Hedef:** Adım 1-6 boyunca "doğrulanmadı" diye kayda geçen üç boşluğu kapatmak.
+
+### Kapatılan boşluklar
+Adım 3'te `error.tsx` için "istemci tarafı yakalamayı doğrulayamadım", Adım 6
+sonunda da "`storage.ts` ve bileşenlerin testi yok" yazmıştım. Üçü de kapandı.
+
+### Kurulum
+`jsdom`, `@testing-library/react` 16, `@testing-library/jest-dom` 7 ve
+`@testing-library/user-event` 14 eklendi.
+
+`vitest.config.mts`:
+- ortam `node` → **`jsdom`** (saf `lib/` testleri jsdom altında da sorunsuz
+  koşuyor; `storage.ts` testi zaten `localStorage` gerektiriyordu, tek ortam
+  tutmak docblock'larla uğraşmaktan basit)
+- desen `src/**/*.test.ts` → `src/**/*.test.{ts,tsx}`
+- `setupFiles: ["src/test/setup.ts"]`
+
+`src/test/setup.ts`: jest-dom eşleştiricileri + her testten sonra `cleanup()` ve
+`localStorage.clear()` — testler birbirine sızmasın.
+
+### Yeni testler: 38 → toplam 85
+
+| Dosya | Test | Öne çıkan |
+| --- | --- | --- |
+| `components/ProductCard.test.tsx` | 7 | Dört durumun **sınır günleri** ayrı ayrı: 3 gün → Güvenli, 2 gün → Dikkat, 0 gün → "Son gün"/Süresi Doldu, -2 gün → "2 gün geçti" |
+| `components/AddProductForm.test.tsx` | 8 | Varsayılan tarih/raf ömrü, ad kırpma, boş ad reddi, gönderim sonrası temizlenme, kullanıcının değiştirdiği tarihin korunması |
+| `components/UndoToast.test.tsx` | 5 | `role="status"` + `aria-live`, 5999 ms'de kapanmaması / 6000 ms'de kapanması (sahte zamanlayıcı) |
+| `app/error.test.tsx` | 6 | Mesaj, `reset` çağrısı, `digest` varken/yokken, console'a bildirim |
+| `lib/storage.test.ts` | 12 | Okuma, **sürümsüz biçimden göç**, bozuk JSON'da çökmeme, ekleme/silme/geri alma, depoya sürümlü yazma, **referans kararlılığı** |
+
+İki test özellikle mimariyi koruyor:
+
+- **Referans kararlılığı:** `rerender()` sonrası `products` dizisinin **aynı
+  referans** olduğunu doğrular. Bu testin kırılması, `useSyncExternalStore`
+  önbelleğinin bozulduğu ve sonsuz render riskinin doğduğu anlamına gelir.
+- **Göç:** Sürümsüz (düz dizi) veriyi okuyabildiğini doğrular. Kullanıcının
+  eski verisinin kaybolmasını engelleyen tek güvence bu.
+
+### Harness yine sınandı
+Yeni ortam yeni altyapıdır; geçen testler jsdom'un gerçekten hata yakaladığını
+kanıtlamaz. `ProductCard.test.tsx`'e kasıtlı bir kırık kondu ve koşuldu:
+
+```
+FAIL  src/components/ProductCard.test.tsx > HARNESS KONTROLU
+Unable to find an element with the text: Süresi Doldu
+Tests  1 failed | 7 passed (8)
+```
+
+jsdom hatayı tam DOM dökümüyle raporladı; kırık kaldırıldı.
+
+### Çıktı temizliği
+`error.tsx` hatayı bilinçli olarak `console.error`'a yazıyor. Testlerde bu
+çağrı taklit edildi (`vi.spyOn`), hem çıktı kirlenmesin hem de "hatayı
+gerçekten bildiriyor mu" ayrı bir testle doğrulanabilsin.
+
+### Doğrulama
+```
+npm test         → Test Files 8 passed (8) | Tests 85 passed (85)   [uyarısız]
+npx tsc --noEmit → temiz
+npm run lint     → temiz
+npm run build    → başarılı
+```
+
+### Dürüst sınır
+`app/page.tsx` için **uçtan uca bütünleşme testi hâlâ yok** — bileşenler ve
+hook ayrı ayrı test edildi, ama "sil → bildirim çıkar → geri al" akışının
+tamamı tek testte denenmedi. Ayrıca `error.tsx`'in Next tarafından hata sınırı
+olarak **bağlanması** framework davranışıdır ve test edilmez; test edilen,
+bağlandığında ekranın doğru çalıştığıdır.
+
+---
+
+## Adım 9 — Dokümantasyon tazelemesi
+
+**Tarih:** 14 Ekim 2026
+
+### `CLAUDE.md` düzeltildi (önemli)
+Adım 8, `CLAUDE.md`'yi **yanlış** hale getirdi: dosya "Vitest node ortamında
+koşar, jsdom yok" diyor ve üç test boşluğunu açık listeliyordu. Yanlış
+dokümantasyon, dokümantasyon olmamasından kötüdür. Güncellenen bölümler:
+
+- Test bölümü: jsdom ortamı, kurulum dosyası, 8 dosya/85 testin dağılım tablosu
+- "Bilinen test boşlukları" → "Kalan test boşlukları": yalnızca gerçekten
+  kalan iki madde
+- Mimari kuralı: "testlerde jsdom gerekmez" ifadesi artık doğru değildi;
+  saf `lib/` dosyaları ile köprü katmanı (`storage.ts`, `useToday.ts`) ayrımı
+  netleştirildi
+- "Henüz yapılmamışlar" listesinden `README.md` maddesi çıkarıldı
+
+### `README.md` yazıldı
+`create-next-app`'in varsayılan içeriği silindi. Yeni README **kullanıcıya**
+bakıyor (CLAUDE.md geliştiriciye bakıyor): uygulamanın ne yaptığı, kalan gün
+formülü, renk tablosu, geri alma davranışı, kurulum, komut tablosu, dosya
+haritası ve sıradaki işler. Mimari kararlar için `CLAUDE.md`'ye, geliştirme
+kaydı için bu dosyaya yönlendiriyor.

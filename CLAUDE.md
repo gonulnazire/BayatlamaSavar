@@ -63,9 +63,11 @@ components/               sunum: AddProductForm, ProductCard, UndoToast
 app/page.tsx              durumu birleştiren tek istemci bileşeni
 ```
 
-**Kural:** `lib/` içindeki saf dosyalar React'i, DOM'u veya `localStorage`'ı
-tanımaz — bu yüzden testlerde jsdom gerekmez. Yeni iş mantığı buraya yazılır,
-bileşenlere yazılmaz.
+**Kural:** `lib/` içindeki saf dosyalar (`date`, `product-schema`,
+`product-list`) React'i, DOM'u veya `localStorage`'ı tanımaz — girdi verip çıktı
+kontrol edilerek test edilirler. Tek istisna `storage.ts` ve `useToday.ts`:
+bunlar köprü katmanıdır ve DOM'a bağımlıdır. Yeni iş mantığı saf dosyalara
+yazılır, bileşenlere yazılmaz.
 
 Veritabanı yok; tek kalıcılık `localStorage`. Sunucu tarafı mantık yoktur,
 sayfa statik olarak prerender edilir.
@@ -132,23 +134,34 @@ Aşağıdakilerin hepsi bir kez canlı olarak yaşandı; detaylar
 
 ## Test yaklaşımı
 
-Vitest **node** ortamında koşar (`vitest.config.mts`), jsdom yok. Testler
-`src/**/*.test.ts` desenindedir ve `lib/` içindeki saf fonksiyonları hedefler:
-`date.test.ts` (15) · `product-schema.test.ts` (22) · `product-list.test.ts` (10).
+Vitest **jsdom** ortamında koşar (`vitest.config.mts`), kurulum dosyası
+`src/test/setup.ts` (jest-dom eşleştiricileri, her testten sonra `cleanup()` ve
+`localStorage.clear()`). Desen: `src/**/*.test.{ts,tsx}`. **85 test / 8 dosya:**
+
+| Dosya | Test | Neyi kapsıyor |
+| --- | --- | --- |
+| `lib/date.test.ts` | 15 | Kalan gün, eşikler, ay/yıl/artık yıl/yaz saati sınırları |
+| `lib/product-schema.test.ts` | 22 | Doğrulama kuralları, şema sürümü, göç |
+| `lib/product-list.test.ts` | 10 | Sıra koruyarak çıkarma/geri koyma |
+| `lib/storage.test.ts` | 12 | `useProducts` hook'u: okuma, göç, ekleme, silme, geri alma, referans kararlılığı |
+| `components/ProductCard.test.tsx` | 7 | Dört durum sınırı, tarih metni, sil çağrısı |
+| `components/AddProductForm.test.tsx` | 8 | Varsayılanlar, kırpma, boş ad reddi, temizlenme |
+| `components/UndoToast.test.tsx` | 5 | Bildirim, erişilebilirlik, 6 sn zamanlayıcı |
+| `app/error.test.tsx` | 6 | Hata ekranı, `reset`, `digest` |
 
 Yeni kod için sıra: **önce kırmızı test, sonra kod.** Mevcut ve doğru çalışan bir
 kod için yazılan test ilk denemede geçer ve hiçbir şey kanıtlamaz; testin bir
 hatayı gerçekten yakaladığını görmek için önce kırmızıyı görmek gerekir.
+Ortam kurulumları (node ve jsdom) bu yüzden birer kasıtlı kırıkla sınandı.
 
-### Bilinen test boşlukları
+### Kalan test boşlukları
 
-- `lib/storage.ts` birim testi yok (`localStorage` ve `window` gerektirir).
-- Bileşenlerin hiçbirinin render testi yok.
-- `error.tsx`'in istemci hatasını yakaladığı doğrulanmadı.
-
-Üçü de **jsdom + React Testing Library** kurulumunu bekliyor; bu karar henüz
-alınmadı. Bu boşluklar kapanana kadar bileşenlere iş mantığı taşımayın —
-`lib/` içinde kalan mantık test edilebilir kalır.
+- `app/page.tsx` için bütünleşme testi yok — bileşenler ve hook ayrı ayrı test
+  edildi, "sil → bildirim çıkar → geri al" akışı uçtan uca test edilmedi.
+- `error.tsx`'in **Next tarafından** hata sınırı olarak bağlanması framework
+  davranışıdır ve test edilmez; test edilen, bağlandığında ekranın doğru
+  çalıştığıdır. (Prerender hatalarını yakalamadığı ayrıca doğrulandı — bkz.
+  tuzak 5.)
 
 ## Next.js sürüm uyarısı
 
@@ -163,8 +176,6 @@ ekler; işinizle birlikte commit'lemek ağacı temiz tutar.
 
 ## Henüz yapılmamışlar
 
-- `README.md` hâlâ `create-next-app`'in varsayılan içeriği — projeye dair
-  hiçbir şey anlatmıyor.
 - Gereksinim dokümanındaki Post-MVP maddeleri: gerçek veritabanı
   (Supabase/PostgreSQL), kullanıcı girişi ile çoklu ev arkadaşı desteği,
   e-posta/push bildirimleri. Hiçbirine başlanmadı.
