@@ -1,7 +1,8 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
-import { PackageOpen, Refrigerator, SearchX } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { LogOut, PackageOpen, Refrigerator, SearchX } from "lucide-react";
+import AuthScreen from "@/components/AuthScreen";
 import FilterBar from "@/components/FilterBar";
 import ProductCard from "@/components/ProductCard";
 import ProductForm from "@/components/ProductForm";
@@ -13,6 +14,8 @@ import {
   filterProducts,
   type StatusFilter,
 } from "@/lib/product-filter";
+import { productStore } from "@/lib/product-store";
+import { signIn, signOut, signUp, useSession } from "@/lib/useSession";
 import { useProducts } from "@/lib/storage";
 import { useToday } from "@/lib/useToday";
 
@@ -25,6 +28,17 @@ export default function Home() {
     restoreProduct,
   } = useProducts();
   const today = useToday();
+  const session = useSession();
+
+  // Oturum hazır olunca store'u bir kez başlat. Bileşen state'i değişmediği
+  // için "effect içinde setState" yasağına girmiyor.
+  const initializedFor = useRef<string | null>(null);
+  useEffect(() => {
+    if (session.status !== "signedIn") return;
+    if (initializedFor.current === session.userId) return;
+    initializedFor.current = session.userId;
+    void productStore.init(session.userId);
+  }, [session]);
 
   // Geri alma için silinen kaydın kendisi tutulur; soft delete sayesinde
   // sıra numarası gerekmiyor, liste zaten aciliyete göre sıralanıyor.
@@ -104,20 +118,47 @@ export default function Home() {
   const ready = today !== "";
   const isFiltered = query.trim() !== "" || status !== "all";
 
+  if (session.status === "unknown") {
+    // Oturum okunurken giriş ekranının bir an parlamasını önler
+    return (
+      <main className="mx-auto w-full max-w-5xl px-4 py-8 sm:px-6 sm:py-12">
+        <div className="mb-8 flex items-center gap-3">
+          <span className="size-11 animate-pulse rounded-xl bg-slate-800" />
+          <div className="flex flex-col gap-2">
+            <span className="h-6 w-48 animate-pulse rounded bg-slate-800" />
+            <span className="h-4 w-64 animate-pulse rounded bg-slate-800/70" />
+          </div>
+        </div>
+        <div className="h-40 animate-pulse rounded-2xl bg-slate-900/60" />
+      </main>
+    );
+  }
+
+  if (session.status === "signedOut") {
+    return <AuthScreen onSignIn={signIn} onSignUp={signUp} />;
+  }
+
   return (
     <main className="mx-auto w-full max-w-5xl px-4 py-8 sm:px-6 sm:py-12">
       <header className="mb-8 flex items-center gap-3">
         <span className="flex size-11 items-center justify-center rounded-xl bg-emerald-500/15 text-emerald-400 ring-1 ring-emerald-500/30">
           <Refrigerator size={22} />
         </span>
-        <div>
+        <div className="min-w-0 flex-1">
           <h1 className="text-2xl font-bold tracking-tight text-slate-50 sm:text-3xl">
             BayatlamaSavar
           </h1>
-          <p className="text-sm text-slate-400">
-            Açtığın gıdaları takip et, israfı önle.
-          </p>
+          <p className="truncate text-sm text-slate-400">{session.email}</p>
         </div>
+
+        <button
+          type="button"
+          onClick={() => void signOut()}
+          className="flex shrink-0 items-center gap-2 rounded-lg border border-slate-700 bg-slate-900/60 px-3 py-2 text-sm font-medium text-slate-300 transition hover:bg-slate-800"
+        >
+          <LogOut size={15} />
+          <span className="hidden sm:inline">Çıkış</span>
+        </button>
       </header>
 
       <ProductForm
