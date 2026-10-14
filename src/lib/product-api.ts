@@ -141,3 +141,23 @@ export function createProductApi(client: SupabaseClient): ProductApi {
     },
   };
 }
+
+/**
+ * İstemciyi her çağrıda tembel çözen API.
+ *
+ * Singleton store'u `createProductApi(getSupabaseClient())` ile kurmak,
+ * modül yüklenirken `getSupabaseClient()` çağırmak demekti ve env yokken
+ * `next build` prerender sırasında kırılırdı. Bu sarmalayıcı çözümü ilk
+ * gerçek kullanıma erteler; `createProductStore(api, cache)` imzası değişmez.
+ */
+export function lazyProductApi(getClient: () => SupabaseClient): ProductApi {
+  const resolve = () => createProductApi(getClient());
+  return {
+    fetchHouseholdId: () => resolve().fetchHouseholdId(),
+    fetchProducts: (householdId) => resolve().fetchProducts(householdId),
+    insertProduct: (p, h, u) => resolve().insertProduct(p, h, u),
+    insertProducts: (ps, h, u) => resolve().insertProducts(ps, h, u),
+    updateProduct: (p) => resolve().updateProduct(p),
+    setConsumedAt: (id, value) => resolve().setConsumedAt(id, value),
+  };
+}
