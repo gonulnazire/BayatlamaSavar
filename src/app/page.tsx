@@ -21,16 +21,14 @@ export default function Home() {
     products,
     addProduct,
     updateProduct,
-    removeProduct,
+    consumeProduct,
     restoreProduct,
   } = useProducts();
   const today = useToday();
 
-  // Silinen kaydı geri alabilmek için kayıt ve eski sırası tutulur
-  const [undoable, setUndoable] = useState<{
-    product: Product;
-    index: number;
-  } | null>(null);
+  // Geri alma için silinen kaydın kendisi tutulur; soft delete sayesinde
+  // sıra numarası gerekmiyor, liste zaten aciliyete göre sıralanıyor.
+  const [undoable, setUndoable] = useState<Product | null>(null);
 
   const [editingId, setEditingId] = useState<string | null>(null);
   const [query, setQuery] = useState("");
@@ -71,19 +69,28 @@ export default function Home() {
   );
 
   const handleDelete = useCallback(
-    (id: string) => {
-      const { removed, index } = removeProduct(id);
-      if (removed) setUndoable({ product: removed, index });
+    async (id: string) => {
+      const target = products.find((p) => p.id === id) ?? null;
+      try {
+        await consumeProduct(id);
+        setUndoable(target);
+      } catch {
+        // Hata store durumunda duruyor; kullanıcıya gösterimi Task 8'de
+      }
     },
-    [removeProduct],
+    [products, consumeProduct],
   );
 
   // Yan etki updater'ın içinde olmamalı: StrictMode updater'ları iki kez
   // çağırır ve ürün iki kez geri eklenirdi.
-  const handleUndo = useCallback(() => {
+  const handleUndo = useCallback(async () => {
     if (!undoable) return;
-    restoreProduct(undoable.product, undoable.index);
-    setUndoable(null);
+    try {
+      await restoreProduct(undoable.id);
+      setUndoable(null);
+    } catch {
+      // Hata store durumunda duruyor; kullanıcıya gösterimi Task 8'de
+    }
   }, [undoable, restoreProduct]);
 
   const handleDismiss = useCallback(() => setUndoable(null), []);
@@ -178,8 +185,8 @@ export default function Home() {
 
       {undoable ? (
         <UndoToast
-          key={undoable.product.id}
-          productName={undoable.product.name}
+          key={undoable.id}
+          productName={undoable.name}
           onUndo={handleUndo}
           onDismiss={handleDismiss}
         />

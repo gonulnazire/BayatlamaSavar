@@ -338,7 +338,6 @@ type ProductStore = {
   updateProduct(p: Product): Promise<void>;
   consumeProduct(id: string): Promise<void>;
   restoreProduct(id: string): Promise<void>;
-  importLegacy(): Promise<{ imported: number }>;   // Task 9'da yazılır
 };
 
 function createProductStore(api: ProductApi, cache: ProductCache): ProductStore;
@@ -430,8 +429,9 @@ git commit -m "feat: product-store — enjekte edilebilir senkron çekirdeği"
 
 ```ts
 function useProducts(): StoreSnapshot & Pick<ProductStore,
-  "addProduct" | "updateProduct" | "consumeProduct" | "restoreProduct"
-  | "retry" | "importLegacy">;
+  "addProduct" | "updateProduct" | "consumeProduct" | "restoreProduct" | "retry">;
+
+// Task 9 bu Pick listesine "importLegacy" ekler.
 ```
 
 - [ ] **Step 1: `product-list.test.ts`'ten `insertAt` ve `removeById` testlerini sil**
@@ -704,7 +704,8 @@ git commit -m "feat: yükleme, hata ve bekleyen yazma durumları sayfaya bağlan
 - Produces:
 
 ```ts
-// product-store.ts
+// product-store.ts — ProductStore tipine, gövdesine ve useProducts Pick'ine
+// birlikte eklenir (T4'te bildirilmedi: bildirilip uygulanmayan üye tsc'yi kırardı)
 importLegacy(): Promise<{ imported: number }>;   // başarıda eski anahtarı siler
 
 type ImportPromptProps = { count: number; busy: boolean; onImport(): void };
