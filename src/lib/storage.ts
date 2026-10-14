@@ -37,5 +37,6 @@ export function useProducts() {
     consumeProduct: productStore.consumeProduct,
     restoreProduct: productStore.restoreProduct,
     retry: productStore.retry,
+    importLegacy: productStore.importLegacy,
   };
 }

@@ -12,6 +12,7 @@ import {
 import AuthScreen from "@/components/AuthScreen";
 import ConnectionBanner from "@/components/ConnectionBanner";
 import FilterBar from "@/components/FilterBar";
+import ImportPrompt from "@/components/ImportPrompt";
 import ProductCard from "@/components/ProductCard";
 import ProductForm from "@/components/ProductForm";
 import Toast from "@/components/Toast";
@@ -37,11 +38,13 @@ export default function Home() {
     dropped,
     cacheWritable,
     lastSyncedAt,
+    legacyCount,
     addProduct,
     updateProduct,
     consumeProduct,
     restoreProduct,
     retry,
+    importLegacy,
   } = useProducts();
   const today = useToday();
   const session = useSession();
@@ -61,6 +64,7 @@ export default function Home() {
   const [undoable, setUndoable] = useState<Product | null>(null);
 
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [importing, setImporting] = useState(false);
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState<StatusFilter>("all");
 
@@ -125,6 +129,17 @@ export default function Home() {
 
   const handleDismiss = useCallback(() => setUndoable(null), []);
 
+  const handleImport = useCallback(async () => {
+    setImporting(true);
+    try {
+      await importLegacy();
+    } catch {
+      // Hata store durumunda; eski anahtar korunduğu için tekrar denenebilir
+    } finally {
+      setImporting(false);
+    }
+  }, [importLegacy]);
+
   const clearFilters = useCallback(() => {
     setQuery("");
     setStatus("all");
@@ -185,6 +200,16 @@ export default function Home() {
         onCancel={() => setEditingId(null)}
         saving={saving}
       />
+
+      {legacyCount > 0 ? (
+        <div className="mt-6">
+          <ImportPrompt
+            count={legacyCount}
+            busy={importing}
+            onImport={() => void handleImport()}
+          />
+        </div>
+      ) : null}
 
       <div className="mt-6">
         <ConnectionBanner

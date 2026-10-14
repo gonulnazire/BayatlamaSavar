@@ -33,6 +33,7 @@ export type ProductStore = {
   updateProduct(product: Product): Promise<void>;
   consumeProduct(id: string): Promise<void>;
   restoreProduct(id: string): Promise<void>;
+  importLegacy(): Promise<{ imported: number }>;
 };
 
 /**
@@ -52,6 +53,9 @@ function classifyError(error: unknown): StoreError {
 
   return { kind: "unknown", message: "Beklenmeyen bir hata oluştu." };
 }
+
+/** Tek insert çağrısı payload sınırına çarpabilir; parçalara bölünür */
+const IMPORT_CHUNK_SIZE = 200;
 
 export function createProductStore(
   api: ProductApi,
@@ -218,6 +222,35 @@ export function createProductStore(
         if (target) consumed.set(id, target);
         commit(snapshot.products.filter((p) => p.id !== id));
       });
+    },
+
+    /**
+     * Supabase öncesi tarayıcı verisini hesaba aktarır.
+     * Kimlikler korunur ve sunucu tarafında ignoreDuplicates kullanılır,
+     * bu yüzden yarıda kesilen aktarım tekrar denenebilir.
+     */
+    async importLegacy() {
+      const household = householdId;
+      const user = userId;
+      if (!household || !user) throw new Error("Oturum hazır değil.");
+
+      const legacy = cache.readLegacy();
+      if (legacy.length === 0) return { imported: 0 };
+
+      let imported = 0;
+      await write(async () => {
+        for (let i = 0; i < legacy.length; i += IMPORT_CHUNK_SIZE) {
+          const chunk = legacy.slice(i, i + IMPORT_CHUNK_SIZE);
+          await api.insertProducts(chunk, household, user);
+          imported += chunk.length;
+        }
+        // Yalnızca tamamı gittikten sonra eski anahtar silinir
+        cache.clearLegacy();
+        set({ legacyCount: 0 });
+        await refresh();
+      });
+
+      return { imported };
     },
 
     async restoreProduct(id) {

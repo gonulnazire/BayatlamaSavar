@@ -367,3 +367,83 @@ describe("product-store — bağlamdan bağımsızlık", () => {
     expect(store.getSnapshot().products).toContainEqual(sauce);
   });
 });
+
+describe("product-store — aktarım", () => {
+  test("eski veriyi okuyup insertProducts çağırır ve kimlikleri korur", async () => {
+    seedLegacy([milk, sauce]);
+    const api = fakeApi();
+    const store = createProductStore(api, productCache);
+    await store.init(USER);
+
+    const { imported } = await store.importLegacy();
+
+    expect(imported).toBe(2);
+    expect(api.insertProducts).toHaveBeenCalledOnce();
+    const sent = (api.insertProducts as ReturnType<typeof vi.fn>).mock
+      .calls[0][0] as Product[];
+    expect(sent.map((p) => p.id)).toEqual(["m1", "s1"]);
+  });
+
+  test("başarıda eski anahtar silinir", async () => {
+    seedLegacy([milk]);
+    const store = createProductStore(fakeApi(), productCache);
+    await store.init(USER);
+    expect(store.getSnapshot().legacyCount).toBe(1);
+
+    await store.importLegacy();
+
+    expect(productCache.hasLegacy()).toBe(false);
+    expect(store.getSnapshot().legacyCount).toBe(0);
+  });
+
+  test("hata verirse eski anahtar KORUNUR", async () => {
+    seedLegacy([milk]);
+    const api = fakeApi({
+      insertProducts: vi.fn(async () => {
+        throw new TypeError("Failed to fetch");
+      }),
+    });
+    const store = createProductStore(api, productCache);
+    await store.init(USER);
+
+    await expect(store.importLegacy()).rejects.toThrow();
+
+    // Yarıda kesilen aktarım tekrar denenebilir kalmalı
+    expect(productCache.hasLegacy()).toBe(true);
+  });
+
+  test("200'den fazla ürünü parçalara bölerek gönderir", async () => {
+    // Review Focus 4: tek insert çağrısı payload sınırına çarpabilir
+    const many: Product[] = Array.from({ length: 500 }, (_, i) => ({
+      ...milk,
+      id: `p${i}`,
+      name: `Ürün ${i}`,
+    }));
+    seedLegacy(many);
+    const api = fakeApi();
+    const store = createProductStore(api, productCache);
+    await store.init(USER);
+
+    const { imported } = await store.importLegacy();
+
+    expect(imported).toBe(500);
+    expect(
+      (api.insertProducts as ReturnType<typeof vi.fn>).mock.calls.length,
+    ).toBeGreaterThan(1);
+  });
+
+  test("aktarım sonrası liste sunucudan tazelenir", async () => {
+    seedLegacy([sauce]);
+    const api = fakeApi();
+    const store = createProductStore(api, productCache);
+    await store.init(USER);
+    const before = (api.fetchProducts as ReturnType<typeof vi.fn>).mock.calls
+      .length;
+
+    await store.importLegacy();
+
+    expect(
+      (api.fetchProducts as ReturnType<typeof vi.fn>).mock.calls.length,
+    ).toBeGreaterThan(before);
+  });
+});
