@@ -1041,3 +1041,40 @@ Göç panelde uygulandı ve sonuç tarayıcıda kontrol edildi:
 - Aşama 1'in kalanı: form alanları (miktar+birim, saklama yeri, açıldı mı),
   geçmiş tarih uyarısı, kategori/saklama yeri/durum filtreleri,
   "Çöpe gitti" düğmesi, geçmiş ekranı.
+
+---
+
+## Adım 17 — Proje kapanışı ve yayın
+
+**Tarih:** 15 Ekim 2026
+**Depo:** <https://github.com/gonulnazire/BayatlamaSavar> (public, `main`, 32 commit)
+
+### Kapanış kararı
+Proje bilinçli olarak bu noktada durduruldu. Görünen her şey çalışıyor ve
+testli (221 test / 19 dosya; tsc, lint, build temiz). Yarım kalmış ekran,
+kırmızı test veya "şunu yapmazsak bozulur" durumu yok.
+
+**Tek pürüz kayda geçti:** veri modeli arayüzün bir adım önünde. Miktar/birim,
+saklama yeri, "açıldı mı" ve "çöpe gitti" modelde ve veritabanında var ama
+formda yok; varsayılanlarıyla kaydediliyor. Bu, model göçünü tek başına yapma
+kararının doğal sonucu. README'de "Projenin bittiği nokta" başlığı altında
+açıkça listelendi ki depoyu açan biri tahmin etmek zorunda kalmasın.
+
+### Yayın öncesi yapılanlar
+- **Sızıntı taraması:** izlenen hiçbir dosyada gerçek Supabase URL'i veya
+  anahtarı yok; yalnızca anahtar adları ve `eyJhbGciOi...` gibi yer tutucular.
+  Depoda değerleri boş `.env.local.example` var, `.env.local` yoksayılıyor.
+- **Bayat belgeler tazelendi:** proje tanımı hâlâ "ambalajı açılan gıdalar"
+  diyordu, depolama biçimi "version 1" yazıyordu, örnek test komutu artık var
+  olmayan bir testi gösteriyordu.
+- **Gereksinim analizi depoya alındı** (`docs/gereksinim-analizi.md`).
+  Doküman git deposunun dışındaydı ve `CLAUDE.md` ona `../` ile atıf yapıyordu;
+  klonlayan birinde bu bağlantı kırık kalırdı.
+- Depo adındaki yazım hatası düzeltildi (`BaytlamaSavar` → `BayatlamaSavar`),
+  dal `master` → `main`.
+
+### Devam edilirse ilk iş
+Aşama 1'in kalanı: form alanları (miktar+birim, saklama yeri, açıldı mı),
+geçmiş tarih uyarısı, "Çöpe gitti" düğmesi, geçmiş ekranı ve
+kategori/saklama yeri/durum filtreleri. Hepsinin altyapısı modelde hazır;
+geçmiş ekranı yeni bir rota açmayı gerektirecek (`page.tsx` ~300 satır).
