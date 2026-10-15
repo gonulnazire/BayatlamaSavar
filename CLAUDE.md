@@ -9,8 +9,8 @@ ambalajı açılmış ürünler için açılma tarihi de tutulur. Amaç gıda is
 önlemek ve kullanıcıyı zamanında uyarmak. Arayüz dili **Türkçe**; kod yorumları, commit mesajları ve
 kullanıcıya görünen her metin Türkçe yazılır.
 
-Gereksinim dokümanı proje klasörünün **bir üstündedir**:
-`../bayatlamasavar_gereksinim_analizi.md` — kapsam tartışmalarında kaynak odur.
+Gereksinim dokümanı depoda: [`docs/gereksinim-analizi.md`](docs/gereksinim-analizi.md)
+— kapsam tartışmalarında kaynak odur.
 Adım adım geliştirme kaydı ve alınan kararların gerekçeleri:
 [`GELISTIRME_NOTLARI.md`](GELISTIRME_NOTLARI.md).
 
