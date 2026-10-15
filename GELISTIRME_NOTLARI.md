@@ -1005,9 +1005,39 @@ Alan şimdilik **boş ve zorunlu**; kategoriye göre öneri Aşama 2'nin işi.
 oluyor. 0001'de olduğu gibi Türkçe metinler Unicode kaçışıyla yazıldı
 (dosyada tek bir ASCII dışı karakter yok).
 
+### Göçte yakalanan hata: bağımlı nesne sırası
+
+İlk denemede panel `42704: index "products_active_idx" does not exist` dedi.
+Sebep bir sıra hatasıydı: indeks `0001`'de `where consumed_at is null`
+koşuluyla kurulmuştu, yani o kolona **bağlıydı**. Postgres bir kolonu
+düşürürken ona bağlı indeksleri de kendiliğinden düşürür; sonraki
+`drop index` artık var olmayan bir nesneyi arıyordu.
+
+Düzeltme iki parçalı:
+
+1. İndeks düşürme, kolon düşürmeden **önce**ye alındı.
+2. Betiğin tamamı **tekrar çalıştırılabilir** hale getirildi
+   (`if exists` / `if not exists` + veri taşıma adımları yalnızca eski
+   kolonlar hâlâ duruyorsa koşuyor). Böylece "ilk deneme geri alındı mı"
+   sorusunu yanıtlamak gerekmedi; betik iki durumda da doğru sonuca varıyor.
+
+**Ders:** şema göçünde kolon silmeden önce o kolona bağlı indeks, kısıt ve
+görünümleri listele. Postgres bunları sessizce temizler ve betiğin geri
+kalanı yanlış varsayımla ilerler.
+
+### Canlı doğrulama (15 Ekim 2026)
+
+Göç panelde uygulandı ve sonuç tarayıcıda kontrol edildi:
+
+- 8 ürünün hepsi korundu; son kullanma tarihleri `açılış + raf ömrü` ile
+  doğru üretildi (Hindi Füme 5 Eki + 5 gün → 10 Eki).
+- Kategori eşlemesi tuttu: `Et/Şarküteri → Et`, `Sos/Konserve → Diğer`.
+- Açılma tarihleri korundu, kayıtlar "açılmış" işaretlendi.
+- **Eşik değişikliği canlıda doğrulandı:** 3 gün sonrasına eklenen ürün
+  "Dikkat" (sarı) çıktı — eski kuralda yeşil olurdu.
+- Açılmamış yeni üründe kartta açılma tarihi yazmıyor, yalnızca saklama yeri.
+
 ### Açık kalanlar
-- **Migration kullanıcı tarafından panelde uygulanmalı.** Uygulanana kadar
-  canlı uygulama çalışmaz; kod artık `state` ve `expires_on` kolonlarını
-  soruyor.
-- Aşama 1'in kalanı: form alanları, geçmiş tarih uyarısı, kategori/saklama
-  yeri/durum filtreleri, "Çöpe gitti" düğmesi, geçmiş ekranı.
+- Aşama 1'in kalanı: form alanları (miktar+birim, saklama yeri, açıldı mı),
+  geçmiş tarih uyarısı, kategori/saklama yeri/durum filtreleri,
+  "Çöpe gitti" düğmesi, geçmiş ekranı.
