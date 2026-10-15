@@ -39,7 +39,8 @@ Bir değişikliği "bitti" saymak için dördü birlikte yeşil olmalı:
 ## Yığın
 
 Next.js 16.4 (App Router, Turbopack) · React 19.3 · Tailwind CSS 4 ·
-TypeScript 5 · Vitest 5 · lucide-react · Node 24
+TypeScript 5 · **Supabase (Postgres + Auth)** · Vitest 5 + React Testing
+Library · lucide-react · Node 24
 
 Tailwind 4 yapılandırması **CSS içinde** (`src/app/globals.css`, `@theme inline`)
 — `tailwind.config.js` yok, aramaya gerek yok.
@@ -70,17 +71,64 @@ kontrol edilerek test edilirler. Tek istisna `storage.ts` ve `useToday.ts`:
 bunlar köprü katmanıdır ve DOM'a bağımlıdır. Yeni iş mantığı saf dosyalara
 yazılır, bileşenlere yazılmaz.
 
-Veritabanı yok; tek kalıcılık `localStorage`. Sunucu tarafı mantık yoktur,
-sayfa statik olarak prerender edilir.
+Veri **Supabase'de** (Postgres). Tarayıcı doğrudan Supabase ile konuşur;
+sunucu tarafı mantık ve API route **yoktur**, sayfa statik olarak prerender
+edilir. Kimlik doğrulama e-posta + şifre.
 
-### localStorage sözleşmesi
+### Veri katmanı
 
-- Anahtar: `bayatlamasavar.products`
-- Biçim: `{"version": 1, "products": [...]}`
-- Okuma `parseStoredProducts()` üzerinden yapılır ve üç durumu ayırır:
-  düz dizi (sürümsüz ilk biçim, göç edilir) · `version: 1` · tanınmayan sürüm
-  (**boş döner** — yanlış veri göstermek hiç göstermemekten kötüdür)
-- **Alan eklenir/değişirse `SCHEMA_VERSION` artırılır ve göç yolu yazılır.**
+```
+lib/supabase/client.ts    getSupabaseClient() — TEMBEL, ilk cagrida dogrular
+lib/product-api.ts        sorgular + satir <-> Product cevrimi (ProductApi)
+lib/product-cache.ts      localStorage onbellegi + eski veri okuma
+lib/product-store.ts      createProductStore(api, cache) — tum senkron mantigi
+lib/storage.ts            useProducts() — useSyncExternalStore sarmalayicisi
+lib/useSession.ts         useSession(), signIn/signUp/signOut
+app/providers.tsx         StoresProvider — testler sahte store enjekte eder
+```
+
+**Okuma** önbellekten anında döner, arka planda sunucudan tazelenir; sunucu
+hatasında önbellek korunur ve durum `offline` olur.
+**Yazma beklemelidir ve çevrimiçi gerektirir:** önce sunucu, başarıdan sonra
+yerel durum. Başarısızsa liste değişmez — rollback mantığı yoktur.
+
+Silme **soft delete**: `consumed_at` damgalanır, "Geri al" onu `null` yapar.
+
+### localStorage anahtarları (AYRI tutulmalı)
+
+| Anahtar | Ne |
+| --- | --- |
+| `bayatlamasavar.cache.v2` | Sunucu verisinin önbelleği |
+| `bayatlamasavar.products` | Supabase öncesi veri; salt okunur, yalnızca tek seferlik aktarım için |
+
+Karışırlarsa "aktarılmayı bekleyen eski veri" ile "sunucu önbelleği" ayırt
+edilemez. Aktarım bitince eski anahtar silinir; kural tek cümle: *eski anahtar
+varsa aktarım teklif edilir.*
+
+İkisi de `{"version": 1, "products": [...]}` biçiminde ve
+`parseStoredProducts()` ile okunuyor. **Alan eklenir/değişirse
+`SCHEMA_VERSION` artırılır ve göç yolu yazılır** — hem SQL migration hem bu sürüm.
+
+### Veritabanı ve güvenlik
+
+SQL `supabase/migrations/` altında: `households` + `household_members` +
+`products`. Paylaşım arayüzü **yok** ama şema hazır ("tek kişilik ev"):
+paylaşım eklendiğinde **RLS politikaları değişmez**, yalnızca
+`household_members`'a satır eklenir.
+
+**RLS bu uygulamada tek güvenlik sınırıdır** — route koruması ve middleware
+yok. `security definer` fonksiyonlarda `set search_path = ''` ve tam nitelikli
+tablo adları **zorunlu**; sabitlenmezse çağıran kendi şemasına aynı adlı tablo
+koyup fonksiyonu kandırabilir.
+
+Env (`.env.local`, örnek: `.env.local.example`): `NEXT_PUBLIC_SUPABASE_URL`,
+`NEXT_PUBLIC_SUPABASE_ANON_KEY`. `service_role` anahtarı istemciye **hiç girmez**.
+
+Kurulum adımları [`KURULUM.md`](KURULUM.md)'de. İki doğrulama komutu:
+`npm run doctor` (env, şema, "Confirm email", tetikleyici, yazma yolu) ve
+`npm run rls-check` (iki test hesabıyla veri yalıtımı). **RLS'in engellediği
+`UPDATE`/`DELETE` hata vermez, 0 satır etkiler** — bu yüzden `rls-check`
+"hata geldi mi" değil "satır etkilendi mi ve veri değişmemiş mi" diye bakar.
 
 ### İş kuralları
 
@@ -146,7 +194,25 @@ Aşağıdakilerin hepsi bir kez canlı olarak yaşandı; detaylar
    Düzenlenen kayıt `products` listesinden türetilir (`editingId` → `find`),
    bu yüzden kayıt silinirse düzenleme kipi kendiliğinden kapanır.
 
-8. **Türkçe arama `toLocaleLowerCase("tr")` ile katlanır** (`lib/product-filter.ts`).
+8. **Sayfa seviyesinde yazma `await` edilmek ZORUNDA.** `handleSubmit`
+   `addProduct`/`updateProduct` sonucunu beklemezse `ProductForm` yazmayı
+   başarılı sanar, alanları temizler ve kullanıcı yazdığını kaybeder. Bu hata
+   bir kez yaşandı ve yalnızca `app/page.test.tsx` yakaladı — formun izole
+   birim testi yakalamaz.
+
+9. **`getSnapshot` referans kararlılığını bozmayın** (`product-store.ts`).
+   Anlık görüntü yalnızca durum değiştiğinde yeniden üretilir; her çağrıda
+   yeni nesne dönerse `useSyncExternalStore` sonsuz render'a girer. Bir test
+   bunu tutuyor.
+
+10. **Store'lar `this` kullanmaz.** `useProducts` eylemleri destructure
+    ediyor; `this`'e bağlı bir metot bağlamı kaybeder ve çağrıldığında çöker.
+
+11. **`app/providers.tsx` ile `lib/useSession.ts` döngüsel içe aktarım
+    yapıyor.** Varsayılan store'lar bu yüzden tembel kurulur; modül gövdesinde
+    kurulsa yükleme sırasına göre `undefined` yakalanabilir.
+
+12. **Türkçe arama `toLocaleLowerCase("tr")` ile katlanır** (`lib/product-filter.ts`).
    Varsayılan `toLowerCase()` ile `"ILIK"` → `"ilik"` olur ve `"Ilık"` ile
    eşleşmez. I/ı ve İ/i çiftleri yalnızca `tr` yereliyle doğru çalışır.
 
@@ -154,20 +220,32 @@ Aşağıdakilerin hepsi bir kez canlı olarak yaşandı; detaylar
 
 Vitest **jsdom** ortamında koşar (`vitest.config.mts`), kurulum dosyası
 `src/test/setup.ts` (jest-dom eşleştiricileri, her testten sonra `cleanup()` ve
-`localStorage.clear()`). Desen: `src/**/*.test.{ts,tsx}`. **121 test / 10 dosya:**
+`localStorage.clear()`). Desen: `src/**/*.test.{ts,tsx}`. **176 test / 18 dosya:**
 
 | Dosya | Test | Neyi kapsıyor |
 | --- | --- | --- |
+| `lib/product-store.test.ts` | 28 | Okuma/yazma/aktarım/yeniden deneme; sahte API enjekte edilir |
 | `lib/product-schema.test.ts` | 22 | Doğrulama kuralları, şema sürümü, göç |
+| `components/ProductForm.test.tsx` | 18 | Kipler, `saving`, başarısızlıkta alanların korunması |
 | `lib/date.test.ts` | 15 | Kalan gün, eşikler, ay/yıl/artık yıl/yaz saati sınırları |
-| `lib/storage.test.ts` | 15 | `useProducts`: okuma, göç, ekleme, güncelleme, silme, geri alma, referans kararlılığı |
-| `lib/product-list.test.ts` | 14 | Sıra koruyarak çıkarma/geri koyma/güncelleme |
-| `lib/product-filter.test.ts` | 14 | Arama (Türkçe harf katlama dahil), durum filtresi, sayaçlar |
-| `components/ProductForm.test.tsx` | 16 | Ekleme ve düzenleme kipleri, varsayılanlar, kırpma, boş ad reddi |
-| `components/ProductCard.test.tsx` | 8 | Dört durum sınırı, tarih metni, düzenle/sil çağrıları |
-| `components/FilterBar.test.tsx` | 6 | Arama kutusu, temizleme, durum düğmeleri, erişilebilir adlar |
+| `lib/product-filter.test.ts` | 14 | Arama (Türkçe harf katlama), durum filtresi, sayaçlar |
+| `components/ProductCard.test.tsx` | 9 | Dört durum sınırı, düzenle/tüket, `disabled` |
+| `lib/product-cache.test.ts` | 9 | Gidiş-dönüş, anahtar ayrımı, yazılamayan depolama |
+| `app/page.test.tsx` | 8 | **Uçtan uca:** giriş kapısı, ekle, tüket, geri al, yazma hatası, çevrimdışı, aktarım |
+| `lib/product-api.test.ts` | 7 | Satır çevrimi, saat dilimi, bozuk satırın reddi |
+| `components/AuthScreen.test.tsx` | 6 | Kipler, boş alan reddi, hata, kilitli buton |
+| `components/ConnectionBanner.test.tsx` | 6 | Çevrimdışı / güncelleniyor / okunamayan kayıt / önbellek uyarısı |
+| `components/FilterBar.test.tsx` | 6 | Arama, temizleme, durum düğmeleri, erişilebilir adlar |
 | `app/error.test.tsx` | 6 | Hata ekranı, `reset`, `digest` |
+| `components/Toast.test.tsx` | 5 | Mesaj, eylem, otomatik kapanma / kapanmama |
 | `components/UndoToast.test.tsx` | 5 | Bildirim, erişilebilirlik, 6 sn zamanlayıcı |
+| `lib/useSession.test.ts` | 5 | Oturum geçişleri, dinleyicinin bırakılması |
+| `lib/product-list.test.ts` | 4 | `replaceById` — sırayı bozmadan güncelleme |
+| `components/ImportPrompt.test.tsx` | 3 | Sayı, aktar düğmesi, meşgul durumu |
+
+**Ağa dokunulmaz.** `product-store` API'yi parametre aldığı için senkron
+mantığı sahte bir API ile test edilir; `app/page.test.tsx` de gerçek store +
+sahte API + sahte oturumla çalışır.
 
 Yeni kod için sıra: **önce kırmızı test, sonra kod.** Mevcut ve doğru çalışan bir
 kod için yazılan test ilk denemede geçer ve hiçbir şey kanıtlamaz; testin bir
@@ -196,6 +274,12 @@ ekler; işinizle birlikte commit'lemek ağacı temiz tutar.
 
 ## Henüz yapılmamışlar
 
-- Gereksinim dokümanındaki Post-MVP maddeleri: gerçek veritabanı
-  (Supabase/PostgreSQL), kullanıcı girişi ile çoklu ev arkadaşı desteği,
-  e-posta/push bildirimleri. Hiçbirine başlanmadı.
+- **Paylaşım arayüzü** (ev arkadaşı daveti). Şema hazır, arayüz yok.
+- **Realtime** — paylaşım gelmeden anlamsız.
+- **Bildirimler** (e-posta / push). Supabase Edge Functions + `pg_cron` ile
+  eklenir, mevcut mimariyi değiştirmez.
+- **Tüketildi / çöpe atıldı ayrımı.** Arayüzde tek düğme var; ayrım için
+  ek kolon gerekir.
+- **Tam çevrimdışı yazma.** Bugün yazma çevrimiçi gerektiriyor.
+- **RLS'in CI içinde test edilmesi** — `npm run rls-check` gerçek bir projeye
+  karşı koşuyor; Docker + Supabase CLI ile CI'da koşturmak ayrı bir iş.

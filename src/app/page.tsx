@@ -1,10 +1,21 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
-import { PackageOpen, Refrigerator, SearchX } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  CloudOff,
+  LogOut,
+  PackageOpen,
+  Refrigerator,
+  RotateCcw,
+  SearchX,
+} from "lucide-react";
+import AuthScreen from "@/components/AuthScreen";
+import ConnectionBanner from "@/components/ConnectionBanner";
 import FilterBar from "@/components/FilterBar";
+import ImportPrompt from "@/components/ImportPrompt";
 import ProductCard from "@/components/ProductCard";
 import ProductForm from "@/components/ProductForm";
+import Toast from "@/components/Toast";
 import UndoToast from "@/components/UndoToast";
 import type { Product } from "@/types/product";
 import { daysLeft } from "@/lib/date";
@@ -13,26 +24,47 @@ import {
   filterProducts,
   type StatusFilter,
 } from "@/lib/product-filter";
+import { signIn, signOut, signUp, useSession } from "@/lib/useSession";
+import { useStores } from "@/app/providers";
 import { useProducts } from "@/lib/storage";
 import { useToday } from "@/lib/useToday";
 
 export default function Home() {
   const {
     products,
+    status: syncStatus,
+    saving,
+    error,
+    dropped,
+    cacheWritable,
+    lastSyncedAt,
+    legacyCount,
     addProduct,
     updateProduct,
-    removeProduct,
+    consumeProduct,
     restoreProduct,
+    retry,
+    importLegacy,
   } = useProducts();
   const today = useToday();
+  const session = useSession();
+  const { products: store } = useStores();
 
-  // Silinen kaydı geri alabilmek için kayıt ve eski sırası tutulur
-  const [undoable, setUndoable] = useState<{
-    product: Product;
-    index: number;
-  } | null>(null);
+  // Oturum hazır olunca store'u başlat. Tekrar koşmasını engelleyen guard
+  // store'un İÇİNDE: bileşen tarafında bir ref olarak durduğunda, çıkış
+  // yapıp aynı hesapla tekrar girince ref eski değeri taşıyor ve init hiç
+  // koşmuyordu. Bileşen state'i değişmediği için effect yasağına girmiyor.
+  useEffect(() => {
+    if (session.status !== "signedIn") return;
+    void store.init(session.userId);
+  }, [session, store]);
+
+  // Geri alma için silinen kaydın kendisi tutulur; soft delete sayesinde
+  // sıra numarası gerekmiyor, liste zaten aciliyete göre sıralanıyor.
+  const [undoable, setUndoable] = useState<Product | null>(null);
 
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [importing, setImporting] = useState(false);
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState<StatusFilter>("all");
 
@@ -58,35 +90,58 @@ export default function Home() {
 
   const counts = useMemo(() => countByStatus(products, today), [products, today]);
 
+  // await ŞART: etmezse ProductForm yazmayı başarılı sanar ve alanları
+  // temizler, kullanıcı da yazdığını kaybeder. Hata yukarı fırlatılır;
+  // formdaki try/catch alanları korur, Toast hatayı gösterir.
   const handleSubmit = useCallback(
-    (product: Product) => {
+    async (product: Product) => {
       if (editing) {
-        updateProduct(product);
+        await updateProduct(product);
         setEditingId(null);
       } else {
-        addProduct(product);
+        await addProduct(product);
       }
     },
     [editing, updateProduct, addProduct],
   );
 
   const handleDelete = useCallback(
-    (id: string) => {
-      const { removed, index } = removeProduct(id);
-      if (removed) setUndoable({ product: removed, index });
+    async (id: string) => {
+      const target = products.find((p) => p.id === id) ?? null;
+      try {
+        await consumeProduct(id);
+        setUndoable(target);
+      } catch {
+        // Hata store durumunda; aşağıdaki Toast gösteriyor
+      }
     },
-    [removeProduct],
+    [products, consumeProduct],
   );
 
   // Yan etki updater'ın içinde olmamalı: StrictMode updater'ları iki kez
   // çağırır ve ürün iki kez geri eklenirdi.
-  const handleUndo = useCallback(() => {
+  const handleUndo = useCallback(async () => {
     if (!undoable) return;
-    restoreProduct(undoable.product, undoable.index);
-    setUndoable(null);
+    try {
+      await restoreProduct(undoable.id);
+      setUndoable(null);
+    } catch {
+      // Hata store durumunda; aşağıdaki Toast gösteriyor
+    }
   }, [undoable, restoreProduct]);
 
   const handleDismiss = useCallback(() => setUndoable(null), []);
+
+  const handleImport = useCallback(async () => {
+    setImporting(true);
+    try {
+      await importLegacy();
+    } catch {
+      // Hata store durumunda; eski anahtar korunduğu için tekrar denenebilir
+    } finally {
+      setImporting(false);
+    }
+  }, [importLegacy]);
 
   const clearFilters = useCallback(() => {
     setQuery("");
@@ -97,20 +152,47 @@ export default function Home() {
   const ready = today !== "";
   const isFiltered = query.trim() !== "" || status !== "all";
 
+  if (session.status === "unknown") {
+    // Oturum okunurken giriş ekranının bir an parlamasını önler
+    return (
+      <main className="mx-auto w-full max-w-5xl px-4 py-8 sm:px-6 sm:py-12">
+        <div className="mb-8 flex items-center gap-3">
+          <span className="size-11 animate-pulse rounded-xl bg-slate-800" />
+          <div className="flex flex-col gap-2">
+            <span className="h-6 w-48 animate-pulse rounded bg-slate-800" />
+            <span className="h-4 w-64 animate-pulse rounded bg-slate-800/70" />
+          </div>
+        </div>
+        <div className="h-40 animate-pulse rounded-2xl bg-slate-900/60" />
+      </main>
+    );
+  }
+
+  if (session.status === "signedOut") {
+    return <AuthScreen onSignIn={signIn} onSignUp={signUp} />;
+  }
+
   return (
     <main className="mx-auto w-full max-w-5xl px-4 py-8 sm:px-6 sm:py-12">
       <header className="mb-8 flex items-center gap-3">
         <span className="flex size-11 items-center justify-center rounded-xl bg-emerald-500/15 text-emerald-400 ring-1 ring-emerald-500/30">
           <Refrigerator size={22} />
         </span>
-        <div>
+        <div className="min-w-0 flex-1">
           <h1 className="text-2xl font-bold tracking-tight text-slate-50 sm:text-3xl">
             BayatlamaSavar
           </h1>
-          <p className="text-sm text-slate-400">
-            Açtığın gıdaları takip et, israfı önle.
-          </p>
+          <p className="truncate text-sm text-slate-400">{session.email}</p>
         </div>
+
+        <button
+          type="button"
+          onClick={() => void signOut()}
+          className="flex shrink-0 items-center gap-2 rounded-lg border border-slate-700 bg-slate-900/60 px-3 py-2 text-sm font-medium text-slate-300 transition hover:bg-slate-800"
+        >
+          <LogOut size={15} />
+          <span className="hidden sm:inline">Çıkış</span>
+        </button>
       </header>
 
       <ProductForm
@@ -119,9 +201,54 @@ export default function Home() {
         initial={editing}
         onSubmit={handleSubmit}
         onCancel={() => setEditingId(null)}
+        saving={saving}
       />
 
-      {!ready ? null : products.length === 0 ? (
+      {legacyCount > 0 ? (
+        <div className="mt-6">
+          <ImportPrompt
+            count={legacyCount}
+            busy={importing}
+            onImport={() => void handleImport()}
+          />
+        </div>
+      ) : null}
+
+      <div className="mt-6">
+        <ConnectionBanner
+          status={syncStatus}
+          lastSyncedAt={lastSyncedAt}
+          dropped={dropped}
+          cacheWritable={cacheWritable}
+          onRetry={() => void retry()}
+        />
+      </div>
+
+      {!ready ? null : products.length === 0 &&
+        syncStatus === "loading" &&
+        !error ? (
+        <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {[0, 1, 2].map((i) => (
+            <div
+              key={i}
+              className="h-44 animate-pulse rounded-2xl bg-slate-900/60"
+            />
+          ))}
+        </div>
+      ) : products.length === 0 && error ? (
+        <div className="mt-8 flex flex-col items-center gap-3 rounded-2xl border border-dashed border-slate-800 px-6 py-16 text-center">
+          <CloudOff size={32} className="text-slate-600" />
+          <p className="text-sm text-slate-400">{error.message}</p>
+          <button
+            type="button"
+            onClick={() => void retry()}
+            className="flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-emerald-500"
+          >
+            <RotateCcw size={15} />
+            Tekrar dene
+          </button>
+        </div>
+      ) : products.length === 0 ? (
         <div className="mt-8 flex flex-col items-center gap-3 rounded-2xl border border-dashed border-slate-800 px-6 py-16 text-center">
           <PackageOpen size={32} className="text-slate-600" />
           <p className="text-sm text-slate-400">
@@ -168,7 +295,8 @@ export default function Home() {
                   product={product}
                   today={today}
                   onEdit={setEditingId}
-                  onDelete={handleDelete}
+                  onConsume={handleDelete}
+                  disabled={saving}
                 />
               ))}
             </div>
@@ -176,10 +304,17 @@ export default function Home() {
         </section>
       )}
 
-      {undoable ? (
+      {error && products.length > 0 ? (
+        <Toast
+          key={error.message}
+          message={error.message}
+          actionLabel="Tekrar dene"
+          onAction={() => void retry()}
+        />
+      ) : undoable ? (
         <UndoToast
-          key={undoable.product.id}
-          productName={undoable.product.name}
+          key={undoable.id}
+          productName={undoable.name}
           onUndo={handleUndo}
           onDismiss={handleDismiss}
         />

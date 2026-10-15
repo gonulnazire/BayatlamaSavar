@@ -1,8 +1,10 @@
 # BayatlamaSavar — Sistem Mimarisi ve Backend Kararı
 
 **Tarih:** 14 Ekim 2026
-**Durum:** Yön belirlendi (Supabase). Kullanım amacı netleşti (tek kullanıcı,
-ileride genişletilebilir). Diğer tasarım detayları açık.
+**Durum:** **UYGULANDI** (14 Ekim 2026). Tasarım
+`docs/superpowers/specs/2026-10-14-supabase-gocu-design.md`, plan
+`docs/superpowers/plans/2026-10-14-supabase-gocu.md`. Kod yazıldı ve test
+edildi; **RLS'in elle doğrulanması kullanıcıda** (spec bölüm 9).
 
 Bu dosya, mevcut mimarinin tam resmini ve backend/veritabanı kararını kayda
 geçirir. Kod yazmadan önce neyin netleşmesi gerektiği en sonda listelidir.
@@ -147,6 +149,13 @@ veya iş miktarını doğrudan değiştiriyor:
 7. **Bildirim** — e-posta mı, tarayıcı push'u mu? (Push için service worker +
    VAPID anahtarları gerekir; e-posta daha kısa yol.)
 
+**Not (14 Ekim 2026):** Aşağıdaki yedi sorunun hepsi tasarım görüşmesinde
+cevaplandı ve spec'in 2. bölümüne karar tablosu olarak geçti: tek kullanıcı /
+"tek kişilik ev" şeması · yerel önbellek + çevrimiçi yazma · e-posta+şifre ·
+tarayıcı doğrudan Supabase · tek seferlik aktarım düğmesi · soft delete ·
+beklemeli yazma. Realtime, paylaşım arayüzü ve bildirimler kapsam dışı
+bırakıldı.
+
 **Ayrıca pratik ön koşul:** Supabase projesi senin hesabında açılmalı ve
 `NEXT_PUBLIC_SUPABASE_URL` ile `NEXT_PUBLIC_SUPABASE_ANON_KEY` değerleri
 `.env.local` dosyasına girilmeli. Bunu benim yerine senin yapman gerekiyor.
@@ -164,4 +173,5 @@ sorular → yaklaşımlar → bölüm bölüm tasarım onayı
    → uygulama planı → kod
 ```
 
-Şu an **1. adımda** (yukarıdaki 7 soru) duruluyor.
+Bu sıra baştan sona yürütüldü. Uygulama 12 task halinde planlandı; 11'i
+tamamlandı, 12'si (elle RLS doğrulaması) kullanıcı eylemi bekliyor.

@@ -12,18 +12,19 @@ const sut: Product = {
   shelfLifeDays: 3,
 };
 
-function renderCard(today = "2026-10-14") {
+function renderCard(today = "2026-10-14", disabled = false) {
   const onEdit = vi.fn();
-  const onDelete = vi.fn();
+  const onConsume = vi.fn();
   render(
     <ProductCard
       product={sut}
       today={today}
       onEdit={onEdit}
-      onDelete={onDelete}
+      onConsume={onConsume}
+      disabled={disabled}
     />,
   );
-  return { onEdit, onDelete };
+  return { onEdit, onConsume };
 }
 
 describe("ProductCard", () => {
@@ -63,10 +64,16 @@ describe("ProductCard", () => {
     ).toBeInTheDocument();
   });
 
-  test("sil butonu ürünün id'siyle çağırır", async () => {
-    const { onDelete } = renderCard();
+  test("onConsume ürünün id'siyle çağırır", async () => {
+    const { onConsume } = renderCard();
     await userEvent.click(screen.getByRole("button", { name: /Tükettim/ }));
-    expect(onDelete).toHaveBeenCalledExactlyOnceWith("p1");
+    expect(onConsume).toHaveBeenCalledExactlyOnceWith("p1");
+  });
+
+  test("disabled iken düğmeler devre dışı", () => {
+    renderCard("2026-10-14", true);
+    expect(screen.getByRole("button", { name: /Tükettim/ })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /düzenle/i })).toBeDisabled();
   });
 
   test("düzenle butonu ürünün id'siyle çağırır", async () => {

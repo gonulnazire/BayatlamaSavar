@@ -1,0 +1,330 @@
+import type { Product } from "@/types/product";
+import { replaceById } from "@/lib/product-list";
+import { lazyProductApi, type ProductApi } from "@/lib/product-api";
+import { productCache, type ProductCache } from "@/lib/product-cache";
+import { getSupabaseClient } from "@/lib/supabase/client";
+
+export type StoreStatus = "loading" | "ready" | "offline";
+
+export type StoreError =
+  | { kind: "network"; message: string }
+  | { kind: "auth"; message: string }
+  | { kind: "setup"; message: string }
+  | { kind: "unknown"; message: string };
+
+export type StoreSnapshot = {
+  products: Product[];
+  status: StoreStatus;
+  saving: boolean;
+  error: StoreError | null;
+  dropped: number;
+  cacheWritable: boolean;
+  lastSyncedAt: string | null;
+  legacyCount: number;
+};
+
+export type ProductStore = {
+  subscribe(listener: () => void): () => void;
+  getSnapshot(): StoreSnapshot;
+  init(userId: string): Promise<void>;
+  reset(): void;
+  retry(): Promise<void>;
+  addProduct(product: Product): Promise<void>;
+  updateProduct(product: Product): Promise<void>;
+  consumeProduct(id: string): Promise<void>;
+  restoreProduct(id: string): Promise<void>;
+  importLegacy(): Promise<{ imported: number }>;
+};
+
+/**
+ * Hata sınıflandırması. `auth` ayrımı önemli: kullanıcıya "kaydedilemedi"
+ * demek yerine "oturumun sona erdi" diyebilmenin tek yolu bu.
+ *
+ * PostgREST hataları `status` yerine `code` taşıyabilir, bu yüzden ikisine de
+ * bakılır. `product-api.ts` bu alanları koruyarak gerçek bir `Error`'a
+ * çeviriyor; çevirmeden önce bu fonksiyonun tüm dalları ölü koddu.
+ */
+function classifyError(error: unknown): StoreError {
+  // Spec §7: teknik detay yalnızca console'a. postgrest'in `hint` alanı
+  // sıkça doğrudan çözümü taşıyor; atmak teşhisi imkansızlaştırır.
+  console.error("BayatlamaSavar veri hatası:", error);
+
+  const raw = (error ?? {}) as { status?: unknown; code?: unknown };
+  const status = raw.status;
+  const code = typeof raw.code === "string" ? raw.code : "";
+
+  // PGRST301/302: JWT süresi/geçersizliği. 42501: RLS reddi — oturum gidince
+  // supabase-js sessizce anon anahtarına düşer ve bu kod gelir.
+  if (
+    status === 401 ||
+    status === 403 ||
+    code === "PGRST301" ||
+    code === "PGRST302" ||
+    code === "42501"
+  ) {
+    return { kind: "auth", message: "Oturumun sona erdi, tekrar giriş yap." };
+  }
+
+  const message = error instanceof Error ? error.message : String(error);
+  // postgrest ağ hatasını status 0 ile işaretler
+  if (status === 0 || error instanceof TypeError || /fetch|network/i.test(message)) {
+    return { kind: "network", message: "Bağlantı kurulamadı." };
+  }
+
+  if (code === "NO_ROWS_AFFECTED") {
+    return {
+      kind: "unknown",
+      message: "Kaydedilemedi: sunucu bu değişikliği kabul etmedi.",
+    };
+  }
+
+  return { kind: "unknown", message: "Beklenmeyen bir hata oluştu." };
+}
+
+/** Tek insert çağrısı payload sınırına çarpabilir; parçalara bölünür */
+const IMPORT_CHUNK_SIZE = 200;
+
+export function createProductStore(
+  api: ProductApi,
+  cache: ProductCache,
+): ProductStore {
+  function emptySnapshot(): StoreSnapshot {
+    return {
+      products: [],
+      status: "loading",
+      saving: false,
+      error: null,
+      dropped: 0,
+      cacheWritable: true,
+      lastSyncedAt: null,
+      legacyCount: cache.readLegacy().length,
+    };
+  }
+
+  // Önbellek anında okunur: sayfa açılışı ağı beklemez
+  let snapshot: StoreSnapshot = { ...emptySnapshot(), products: cache.read() };
+
+  const listeners = new Set<() => void>();
+  // Geri alma için: tüketilen kayıt burada tutulur, böylece yeniden sorgu gerekmez
+  const consumed = new Map<string, Product>();
+
+  let householdId: string | null = null;
+  let userId: string | null = null;
+  /**
+   * Hangi kullanıcı için başlatıldığını store'un KENDİSİ tutar.
+   * Bu guard bileşen tarafında bir ref olarak durduğunda, çıkış yapıp aynı
+   * hesapla tekrar girince ref eski değeri taşıdığı için `init` hiç
+   * koşmuyordu ve uygulama sonsuza kadar iskelette kalıyordu.
+   */
+  let initializedFor: string | null = null;
+
+  function emit(): void {
+    for (const listener of listeners) listener();
+  }
+
+  /** Anlık görüntü yalnızca değişiklikte yeniden üretilir (referans kararlılığı) */
+  function set(patch: Partial<StoreSnapshot>): void {
+    snapshot = { ...snapshot, ...patch };
+    emit();
+  }
+
+  function commit(products: Product[]): void {
+    set({ products, cacheWritable: cache.write(products) });
+  }
+
+  async function refresh(): Promise<void> {
+    if (!householdId) return;
+    try {
+      const { products, dropped } = await api.fetchProducts(householdId);
+
+      // Oturum sekme açıkken ölürse supabase-js anon anahtarına düşer ve
+      // sorgu HATASIZ [] döner. Bunu doğru kabul etmek kullanıcıya uyarısız
+      // boş liste gösterip çevrimdışı önbelleği silmek demek. Boş sonuç
+      // geldiğinde evin hâlâ görünür olduğunu teyit ediyoruz.
+      if (products.length === 0) {
+        const stillVisible = await api.fetchHouseholdId();
+        if (!stillVisible) {
+          set({
+            status: "offline",
+            error: {
+              kind: "auth",
+              message: "Oturumun sona erdi, tekrar giriş yap.",
+            },
+          });
+          return;
+        }
+      }
+
+      const written = cache.write(products);
+      set({
+        products,
+        dropped,
+        status: "ready",
+        error: null,
+        cacheWritable: written,
+        lastSyncedAt: new Date().toISOString(),
+      });
+    } catch (error) {
+      // Önbellek korunur: çevrimdışıyken liste hâlâ görünür
+      set({ status: "offline", error: classifyError(error) });
+    }
+  }
+
+  /** Beklemeli yazma: önce sunucu, başarıdan sonra yerel durum */
+  async function write(action: () => Promise<void>): Promise<void> {
+    set({ saving: true, error: null });
+    try {
+      await action();
+      set({ saving: false });
+    } catch (error) {
+      set({ saving: false, error: classifyError(error) });
+      throw error;
+    }
+  }
+
+  async function init(user: string): Promise<void> {
+    if (initializedFor === user && householdId) return;
+    initializedFor = user;
+    userId = user;
+    set({ legacyCount: cache.readLegacy().length });
+
+    try {
+      householdId = await api.fetchHouseholdId();
+    } catch (error) {
+      set({ status: "offline", error: classifyError(error) });
+      return;
+    }
+
+    if (!householdId) {
+      set({
+        status: "offline",
+        error: {
+          kind: "setup",
+          message:
+            "Hesap kurulumu tamamlanamadı. Lütfen çıkıp tekrar giriş yap.",
+        },
+      });
+      return;
+    }
+
+    await refresh();
+  }
+
+  return {
+    subscribe(listener) {
+      listeners.add(listener);
+
+      // Bağlantı gelince ve sekmeye dönünce kendiliğinden tazele
+      const onOnline = () => void refresh();
+      const onVisible = () => {
+        if (document.visibilityState === "visible") void refresh();
+      };
+      window.addEventListener("online", onOnline);
+      document.addEventListener("visibilitychange", onVisible);
+
+      return () => {
+        listeners.delete(listener);
+        window.removeEventListener("online", onOnline);
+        document.removeEventListener("visibilitychange", onVisible);
+      };
+    },
+
+    getSnapshot() {
+      return snapshot;
+    },
+
+    init,
+
+    reset() {
+      householdId = null;
+      userId = null;
+      consumed.clear();
+      cache.clear();
+      snapshot = emptySnapshot();
+      emit();
+    },
+
+    // `this` kullanılmaz: useProducts eylemleri destructure ediyor,
+    // bağlam kaybolsa çağrı çökerdi.
+    async retry() {
+      if (!householdId && userId) return init(userId);
+      return refresh();
+    },
+
+    async addProduct(product) {
+      const household = householdId;
+      const user = userId;
+      if (!household || !user) {
+        throw new Error("Oturum hazır değil.");
+      }
+      await write(async () => {
+        await api.insertProduct(product, household, user);
+        commit([product, ...snapshot.products]);
+      });
+    },
+
+    async updateProduct(product) {
+      await write(async () => {
+        await api.updateProduct(product);
+        commit(replaceById(snapshot.products, product));
+      });
+    },
+
+    async consumeProduct(id) {
+      await write(async () => {
+        await api.setConsumedAt(id, new Date().toISOString());
+        const target = snapshot.products.find((p) => p.id === id);
+        if (target) consumed.set(id, target);
+        commit(snapshot.products.filter((p) => p.id !== id));
+      });
+    },
+
+    /**
+     * Supabase öncesi tarayıcı verisini hesaba aktarır.
+     * Kimlikler korunur ve sunucu tarafında ignoreDuplicates kullanılır,
+     * bu yüzden yarıda kesilen aktarım tekrar denenebilir.
+     */
+    async importLegacy() {
+      const household = householdId;
+      const user = userId;
+      if (!household || !user) throw new Error("Oturum hazır değil.");
+
+      const legacy = cache.readLegacy();
+      if (legacy.length === 0) return { imported: 0 };
+
+      let imported = 0;
+      await write(async () => {
+        for (let i = 0; i < legacy.length; i += IMPORT_CHUNK_SIZE) {
+          const chunk = legacy.slice(i, i + IMPORT_CHUNK_SIZE);
+          await api.insertProducts(chunk, household, user);
+          imported += chunk.length;
+        }
+        // Yalnızca tamamı gittikten sonra eski anahtar silinir
+        cache.clearLegacy();
+        set({ legacyCount: 0 });
+        await refresh();
+      });
+
+      return { imported };
+    },
+
+    async restoreProduct(id) {
+      await write(async () => {
+        await api.setConsumedAt(id, null);
+        const target = consumed.get(id);
+        if (!target) {
+          // Başka bir sekmede tüketilmişse yerelde kaydı yok; sunucudan al
+          await refresh();
+          return;
+        }
+        consumed.delete(id);
+        commit([target, ...snapshot.products]);
+      });
+    },
+  };
+}
+
+export const productStore: ProductStore = createProductStore(
+  lazyProductApi(getSupabaseClient),
+  productCache,
+);

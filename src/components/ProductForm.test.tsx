@@ -177,3 +177,29 @@ describe("ProductForm — düzenleme kipi", () => {
     ).toBeInTheDocument();
   });
 });
+
+describe("ProductForm — kaydetme durumu", () => {
+  test("saving iken buton devre dışı ve alanlar kilitli", () => {
+    render(<ProductForm today={TODAY} onSubmit={vi.fn()} saving />);
+    expect(screen.getByRole("button", { name: "Ekle" })).toBeDisabled();
+    expect(screen.getByLabelText("Ürün Adı")).toBeDisabled();
+    expect(screen.getByLabelText("Kategori")).toBeDisabled();
+    expect(screen.getByLabelText("Açılış Tarihi")).toBeDisabled();
+    expect(screen.getByLabelText("Raf Ömrü (gün)")).toBeDisabled();
+  });
+
+  test("gönderim başarısız olursa alanlar korunur", async () => {
+    // Review Focus 1: kullanıcı yazdığını kaybetmesin
+    const onSubmit = vi.fn(async () => {
+      throw new Error("Kaydedilemedi");
+    });
+    render(<ProductForm today={TODAY} onSubmit={onSubmit} />);
+
+    const name = screen.getByLabelText("Ürün Adı");
+    await userEvent.type(name, "Kaşar");
+    await userEvent.click(screen.getByRole("button", { name: "Ekle" }));
+
+    expect(onSubmit).toHaveBeenCalledOnce();
+    expect(name).toHaveValue("Kaşar");
+  });
+});
