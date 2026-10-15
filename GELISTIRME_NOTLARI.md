@@ -784,3 +784,139 @@ kırmızı olduğu görüldü, sonra implementasyon geri konuldu. Bütün kararl
 - Kullanıcı eylemleri: Supabase projesi, SQL'in uygulanması, "Confirm email"
   kapatılması, `.env.local`.
 - Dal `supabase-gocu` henüz `master`'a birleştirilmedi.
+
+> **Sonradan not:** Bu üç maddenin hepsi Adım 15'te kapandı — doğrulama
+> betiklere çevrildi ve canlı projede koşturuldu, kullanıcı eylemleri
+> tamamlandı, dal `master`'a birleştirildi.
+
+---
+
+## Adım 14 — Kurulum betikleri ve dal incelemesi
+
+**Tarih:** 14 Ekim 2026
+**Dal:** `supabase-gocu`
+
+### Elle doğrulama betiğe çevrildi
+Adım 13'ün açık bıraktığı "Task 12: elle RLS doğrulaması" altı maddelik bir
+kontrol listesiydi. Liste insanın atlayabileceği bir şey olduğu için iki
+komuta dönüştürüldü:
+
+- `npm run doctor` — env, bağlantı, şema, RLS'in açık olması, "Confirm email"
+  ayarı, kayıt tetikleyicisi, gerçek yazma yolu
+- `npm run rls-check` — iki test hesabı açıp veri yalıtımını sınar
+
+Betiğin ölçütü özellikle dikkatli seçildi: **RLS'in engellediği `UPDATE` ya da
+`DELETE` Postgres'te hata vermez, yalnızca 0 satır etkiler.** "Hata geldi mi"
+diye bakan bir kontrol burada yanlış bir güvence verirdi; bu yüzden betik hem
+etkilenen satır sayısına hem de verinin gerçekten değişmemiş olduğuna bakıyor.
+
+Adım adım panel rehberi `KURULUM.md`'ye yazıldı.
+
+### Taze bağlamlı inceleme
+Dal, hiçbir şeyini bilmeyen bir gözden geçiriciye verildi: **2 Critical,
+7 Important, 10 Minor.** I1 etkisine bakılarak Critical'a, M1 Important'a
+yükseltildi. Bulgular `INCELEME_BULGULARI.md`'ye yazıldı; düzeltme turunda
+**9'u kapatıldı, her biri önce kırmızı test ile kanıtlandı.** Test 176 → 198.
+
+En önemli iki bulgu aynı kökten geliyordu — **`ProductApi` sınırı hiç test
+edilmemişti:**
+
+1. **C1 — hata sınıflandırmasının tamamı ölü koddu.** postgrest-js'in
+   fırlattığı şey bir `Error` değil, gövdeden ayrıştırılmış düz bir nesne ve
+   `status` taşımıyor. Dolayısıyla `status === 401` hiç tutmuyor,
+   `error instanceof Error` false olduğu için `String(error)` →
+   `"[object Object]"` oluyordu. Her hata `unknown`'a düşüyor, kullanıcı ne
+   olursa olsun "Beklenmeyen bir hata oluştu." görüyordu.
+   **176 test bunu neden kaçırdı:** testler `Object.assign(new Error(...),
+   {status: 401})` fırlatıyordu — gerçek API bu şekli hiç üretmiyor.
+2. **I1 — `UPDATE` yazmaları doğrulanmıyordu.** `.select()` olmadan PostgREST
+   satır bulamayınca da RLS filtreleyince de **204 ve hatasız** dönüyor.
+   "Kaydedildi" denip hiçbir şey yazılmamış olması, beklemeli yazmanın bütün
+   gerekçesini çürütüyordu.
+
+**Ders:** Sahte nesneler gerçeğin şeklini taklit etmiyorsa test sayısı bir şey
+ifade etmiyor. Sınır katmanı (`product-api`) artık gerçek PostgREST gövdeleriyle
+test ediliyor (`product-api-errors.test.ts`).
+
+### Ertelenen
+- **I7** — aynı ürünü iki sekmede düzenlerken eski yazma yenisini eziyor.
+  Doğru çözüm `Product` modeline eşzamanlılık belirteci (`updated_at`/`version`)
+  eklemek: tip + `SCHEMA_VERSION` + önbellek göçü + çatışma arayüzü demek.
+  Tek kullanıcılı bir uygulamada tetikleyici "kendi iki sekmen"; bedel
+  orantısız bulundu. Veri silinmiyor, bir alan kayboluyor.
+- **M2–M10** — ayrıntıları `INCELEME_BULGULARI.md`'de.
+
+---
+
+## Adım 15 — Canlı Supabase kurulumu, uçtan uca doğrulama ve örnek veri
+
+**Tarih:** 15 Ekim 2026
+**Sonuç:** Dal `master`'a birleştirildi (`a1fe2c0`). Göç bitti.
+
+### Yapılanlar
+Supabase projesi açıldı, şema panelde uygulandı, "Confirm email" kapatıldı,
+`.env.local` dolduruldu; iki doğrulama betiği **gerçek projeye karşı ilk kez**
+koşturuldu ve uygulama tarayıcıda uçtan uca denendi.
+
+| Doğrulama | Sonuç |
+| --- | --- |
+| `npm test` | 198/198 |
+| `npx tsc --noEmit` · `npm run lint` · `npm run build` | temiz |
+| `npm run doctor` | 6/6 |
+| `npm run rls-check` | 11/11 |
+| Tarayıcıda ekle / düzenle / tüket / geri al / yenile | çalışıyor |
+
+### Üç gerçek tuzak
+
+1. **Sohbetten kopyalanan SQL'e açıklama metni karıştı.** Panel
+   `syntax error at or near "Başlangıç"` dedi — 119. satır artık SQL değil,
+   kod bloğunun altındaki paragraftı. Sözdizimi hatası ayrıştırma aşamasında
+   yakalandığı için **hiçbir şey uygulanmamıştı**, yarım kalan bir durum
+   oluşmadı. Ders: uzun SQL'i yapıştırtırken blok mesajın **en sonunda**
+   olmalı, altına tek satır bile yazılmamalı.
+
+2. **Türkçe karakterler kopyalamada risk.** `products.category` kısıtı
+   uygulamadaki `CATEGORIES` sabitiyle **harfi harfine** eşleşmek zorunda;
+   kopyalamada `ü/ş/ğ` bozulursa tablo yine kurulur ama sonra hiçbir ürün
+   eklenemez. Çözüm: dört Türkçe metin Postgres'in Unicode kaçış sözdizimine
+   çevrildi (`Diğer` → `U&'Di\011Fer'`), böylece dosyada **tek bir ASCII dışı
+   karakter kalmadı**. Kaçışlar geri çözülerek birebir doğrulandı. Bu çevrimin güzel
+   yanı sessiz başarısızlığın imkânsız olması: yanlış çözülse `check` kısıtı
+   ilk eklemeyi reddeder — nitekim `doctor` tam da bunu sınıyor.
+
+3. **Panelin verdiği adres `/rest/v1/` ile bitiyor.** `supabase-js` bu eki
+   kendisi ekliyor; olduğu gibi yazılsaydı her istek
+   `/rest/v1/rest/v1/...` adresine gidip 404 dönerdi.
+   `NEXT_PUBLIC_SUPABASE_URL` çıplak proje adresi olmalı.
+
+### Yanlış teşhis edilen iki şey (ikisi de uygulamada kusur değildi)
+
+- **"Hesap kurulumu tamamlanamadı" ekranı.** İlk bakışta kayıt tetikleyicisinin
+  çalışmadığı sanıldı. Gerçek sebep: dev sunucusu durdurulurken npm
+  sarmalayıcısı öldü ama `next dev` süreci ayakta kaldı (Windows'ta çocuk süreç
+  miras almıyor); tarayıcıdaki sayfa bayat kalmıştı. Yenilemeden sonra istekler
+  200 döndü ve ev kimliği bulundu. Ders: sunucuyu durdurduktan sonra **portu
+  kontrol et**, süreç adını değil.
+- **"Ekle" düğmesinin çalışmaması.** Tarayıcı otomasyonunun referans üzerinden
+  gönderdiği tıklama forma hiç ulaşmıyordu — ağ kaydında tek bir `POST` yoktu.
+  Form doğrulaması geçiyordu, DOM ile React durumu birebir aynıydı; gerçek bir
+  `click()` ilk denemede ekledi. Otomasyon kusuru, uygulama kusuru değil.
+  Aynı şekilde "geri alma bildirimi çıkmıyor" sanılan durum da ekran görüntüsü
+  gecikmesiydi: bildirim ölçüldüğünde `position: fixed`, `opacity: 1`,
+  alt-ortada 384×58 piksel olarak **oradaydı**.
+
+### Örnek veri
+Uygulamayı dolu görebilmek için sekiz ürün eklendi; üç durum rengini ve dört
+kategoriyi birden kapsıyor (2 kırmızı, 2 sarı, 4 yeşil). Liste aciliyete göre
+doğru sıralandı ve filtre sayaçları tuttu (Tümü 8 · Güvenli 4 · Dikkat 2 ·
+Süresi Doldu 2). Bunlar gerçek kayıtlar: istenmeyenler "Tükettim / Sil" ile
+kaldırılabilir.
+
+### Açık kalanlar
+- **Çıkış → aynı hesapla tekrar giriş** canlıda denenmedi; şifre gerektirdiği
+  için kullanıcıya bırakıldı. Bu yol incelemedeki C2'nin kilitlediği yoldu,
+  düzeltmesi `app/page.test.tsx` ile kapalı.
+- I7 ve M2–M10 hâlâ açık (bkz. Adım 14).
+- `doctor` ve `rls-check` panelde üç test kullanıcısı bıraktı
+  (`bayatlamasavar-...@test.local`); Authentication → Users altından
+  silinebilir.

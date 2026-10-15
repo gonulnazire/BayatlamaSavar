@@ -57,19 +57,27 @@ lib/product-list.ts       liste işlemleri, sıra koruyarak (saf)
 lib/product-filter.ts     arama + durum filtresi, sayaçlar (saf)
 lib/date.ts               iş mantığı: kalan gün, durum eşikleri (saf)
         ↓
-lib/storage.ts            localStorage ↔ React köprüsü (useProducts hook'u)
+lib/product-api.ts        Supabase sorguları + satır ↔ Product çevrimi
+lib/product-cache.ts      localStorage önbelleği (yalnızca okuma hızlandırıcı)
+lib/product-store.ts      createProductStore(api, cache) — senkron mantığı
+        ↓
+lib/storage.ts            useProducts() — store'u React'e bağlar
+lib/useSession.ts         oturum durumu (useSession hook'u)
 lib/useToday.ts           bugünün tarihi (useToday hook'u)
         ↓
-components/               sunum: ProductForm, ProductCard, FilterBar, UndoToast
+components/               sunum: ProductForm, ProductCard, FilterBar, Toast,
+                          AuthScreen, ConnectionBanner, ImportPrompt
         ↓
 app/page.tsx              durumu birleştiren tek istemci bileşeni
 ```
 
 **Kural:** `lib/` içindeki saf dosyalar (`date`, `product-schema`,
-`product-list`, `product-filter`) React'i, DOM'u veya `localStorage`'ı tanımaz — girdi verip çıktı
-kontrol edilerek test edilirler. Tek istisna `storage.ts` ve `useToday.ts`:
-bunlar köprü katmanıdır ve DOM'a bağımlıdır. Yeni iş mantığı saf dosyalara
-yazılır, bileşenlere yazılmaz.
+`product-list`, `product-filter`) React'i, DOM'u, ağı veya `localStorage`'ı
+tanımaz — girdi verip çıktı kontrol edilerek test edilirler. `product-store`
+da saftır ama bağımlılıklarını **parametre olarak** alır (`api`, `cache`), bu
+yüzden ağa dokunmadan test edilir. DOM'a/ağa bağımlı olanlar yalnızca
+`product-api`, `product-cache`, `storage`, `useSession`, `useToday`. Yeni iş
+mantığı saf dosyalara yazılır, bileşenlere yazılmaz.
 
 Veri **Supabase'de** (Postgres). Tarayıcı doğrudan Supabase ile konuşur;
 sunucu tarafı mantık ve API route **yoktur**, sayfa statik olarak prerender
@@ -220,26 +228,27 @@ Aşağıdakilerin hepsi bir kez canlı olarak yaşandı; detaylar
 
 Vitest **jsdom** ortamında koşar (`vitest.config.mts`), kurulum dosyası
 `src/test/setup.ts` (jest-dom eşleştiricileri, her testten sonra `cleanup()` ve
-`localStorage.clear()`). Desen: `src/**/*.test.{ts,tsx}`. **176 test / 18 dosya:**
+`localStorage.clear()`). Desen: `src/**/*.test.{ts,tsx}`. **198 test / 19 dosya:**
 
 | Dosya | Test | Neyi kapsıyor |
 | --- | --- | --- |
-| `lib/product-store.test.ts` | 28 | Okuma/yazma/aktarım/yeniden deneme; sahte API enjekte edilir |
+| `lib/product-store.test.ts` | 38 | Okuma/yazma/aktarım/yeniden deneme; sahte API enjekte edilir |
 | `lib/product-schema.test.ts` | 22 | Doğrulama kuralları, şema sürümü, göç |
 | `components/ProductForm.test.tsx` | 18 | Kipler, `saving`, başarısızlıkta alanların korunması |
 | `lib/date.test.ts` | 15 | Kalan gün, eşikler, ay/yıl/artık yıl/yaz saati sınırları |
 | `lib/product-filter.test.ts` | 14 | Arama (Türkçe harf katlama), durum filtresi, sayaçlar |
 | `components/ProductCard.test.tsx` | 9 | Dört durum sınırı, düzenle/tüket, `disabled` |
 | `lib/product-cache.test.ts` | 9 | Gidiş-dönüş, anahtar ayrımı, yazılamayan depolama |
-| `app/page.test.tsx` | 8 | **Uçtan uca:** giriş kapısı, ekle, tüket, geri al, yazma hatası, çevrimdışı, aktarım |
+| `app/page.test.tsx` | 9 | **Uçtan uca:** giriş kapısı, ekle, tüket, geri al, yazma hatası, çevrimdışı, aktarım, çıkış+tekrar giriş |
 | `lib/product-api.test.ts` | 7 | Satır çevrimi, saat dilimi, bozuk satırın reddi |
+| `lib/product-api-errors.test.ts` | 8 | **Gerçek PostgREST hata şekilleri**: status/code korunur, 0 satırlık UPDATE fırlatır |
 | `components/AuthScreen.test.tsx` | 6 | Kipler, boş alan reddi, hata, kilitli buton |
 | `components/ConnectionBanner.test.tsx` | 6 | Çevrimdışı / güncelleniyor / okunamayan kayıt / önbellek uyarısı |
 | `components/FilterBar.test.tsx` | 6 | Arama, temizleme, durum düğmeleri, erişilebilir adlar |
 | `app/error.test.tsx` | 6 | Hata ekranı, `reset`, `digest` |
 | `components/Toast.test.tsx` | 5 | Mesaj, eylem, otomatik kapanma / kapanmama |
 | `components/UndoToast.test.tsx` | 5 | Bildirim, erişilebilirlik, 6 sn zamanlayıcı |
-| `lib/useSession.test.ts` | 5 | Oturum geçişleri, dinleyicinin bırakılması |
+| `lib/useSession.test.ts` | 8 | Oturum geçişleri, `getSession` reddi, `SIGNED_OUT`'ta önbellek temizliği |
 | `lib/product-list.test.ts` | 4 | `replaceById` — sırayı bozmadan güncelleme |
 | `components/ImportPrompt.test.tsx` | 3 | Sayı, aktar düğmesi, meşgul durumu |
 
@@ -254,8 +263,10 @@ Ortam kurulumları (node ve jsdom) bu yüzden birer kasıtlı kırıkla sınand�
 
 ### Kalan test boşlukları
 
-- `app/page.tsx` için bütünleşme testi yok — bileşenler ve hook ayrı ayrı test
-  edildi, "sil → bildirim çıkar → geri al" akışı uçtan uca test edilmedi.
+- **`createProductApi` ağa karşı test edilmiyor.** Hata şekilleri
+  `product-api-errors.test.ts`'te gerçek PostgREST gövdeleriyle taklit edildi,
+  ama gerçek bir sunucuya karşı koşan test yok; o boşluğu `npm run doctor` ve
+  `npm run rls-check` elle kapatıyor.
 - `error.tsx`'in **Next tarafından** hata sınırı olarak bağlanması framework
   davranışıdır ve test edilmez; test edilen, bağlandığında ekranın doğru
   çalıştığıdır. (Prerender hatalarını yakalamadığı ayrıca doğrulandı — bkz.
