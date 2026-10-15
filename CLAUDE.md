@@ -4,9 +4,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Proje
 
-**BayatlamaSavar** — ambalajı açıldıktan sonra raf ömrü kısalan gıdaların
-(süt, yoğurt, salça, soslar) takibi. Amaç gıda israfını önlemek ve kullanıcıyı
-zamanında uyarmak. Arayüz dili **Türkçe**; kod yorumları, commit mesajları ve
+**BayatlamaSavar** — evdeki gıdaların **son kullanma tarihine** göre takibi;
+ambalajı açılmış ürünler için açılma tarihi de tutulur. Amaç gıda israfını
+önlemek ve kullanıcıyı zamanında uyarmak. Arayüz dili **Türkçe**; kod yorumları, commit mesajları ve
 kullanıcıya görünen her metin Türkçe yazılır.
 
 Gereksinim dokümanı proje klasörünün **bir üstündedir**:
@@ -30,7 +30,7 @@ Tek dosya ya da tek test:
 
 ```bash
 npm test -- src/lib/date.test.ts
-npx vitest run -t "negatif raf ömrünü reddeder"
+npx vitest run -t "tam 3 gün dikkat eşiğine girer"
 ```
 
 Bir değişikliği "bitti" saymak için dördü birlikte yeşil olmalı:
@@ -113,7 +113,7 @@ Karışırlarsa "aktarılmayı bekleyen eski veri" ile "sunucu önbelleği" ayı
 edilemez. Aktarım bitince eski anahtar silinir; kural tek cümle: *eski anahtar
 varsa aktarım teklif edilir.*
 
-İkisi de `{"version": 1, "products": [...]}` biçiminde ve
+İkisi de `{"version": 2, "products": [...]}` biçiminde ve
 `parseStoredProducts()` ile okunuyor. **Alan eklenir/değişirse
 `SCHEMA_VERSION` artırılır ve göç yolu yazılır** — hem SQL migration hem bu sürüm.
 

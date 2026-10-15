@@ -1,8 +1,8 @@
 # BayatlamaSavar
 
-Buzdolabında ya da mutfakta **ambalajı açıldıktan sonra** raf ömrü kısalan
-gıdaları (süt, yoğurt, salça, soslar) takip eder; hangisinin ne zaman
-tükenmesi gerektiğini renklerle gösterip gıda israfını önler.
+Evdeki gıdaları **son kullanma tarihine** göre takip eder; hangisinin ne
+zaman tükenmesi gerektiğini renklerle gösterip gıda israfını önler.
+Ambalajı açılmış ürünler için açılma tarihi de tutulur.
 
 Veri **hesabına bağlı** olarak Supabase'de durur: telefonda eklediğini
 bilgisayarda görürsün, tarayıcı verisi temizlense bile ürünlerin kaybolmaz.
@@ -78,7 +78,7 @@ Tek dosya ya da tek test çalıştırmak için:
 
 ```bash
 npm test -- src/lib/date.test.ts
-npx vitest run -t "negatif raf ömrünü reddeder"
+npx vitest run -t "tam 3 gün dikkat eşiğine girer"
 ```
 
 ## Yığın
@@ -102,7 +102,32 @@ Mimari kararlar, veri sözleşmesi ve bu projeye özgü tuzaklar için
 [`CLAUDE.md`](CLAUDE.md); adım adım geliştirme kaydı için
 [`GELISTIRME_NOTLARI.md`](GELISTIRME_NOTLARI.md).
 
+## Projenin bittiği nokta
+
+Çalışan ve testli olan her şey yukarıda anlatıldı. Dürüst olmak gerekirse
+**veri modeli arayüzün bir adım önünde**: aşağıdaki alanlar modelde ve
+veritabanında var, ama formda henüz yok ve varsayılanlarıyla kaydediliyor.
+
+| Modelde var, arayüzde yok | Bugünkü varsayılan |
+| --- | --- |
+| Miktar + birim | 1 adet |
+| Saklama yeri | Buzdolabı |
+| Açıldı mı + açılma tarihi | açılmamış |
+| "Çöpe gitti" durumu | yalnızca "tüketildi" yazılıyor |
+
+Bu bilinçli bir duraktı: model göçü tek başına yapılıp uygulama çalışır
+halde bırakıldı. Düzenleme sırasında bu alanların **ezilmediği** ayrı bir
+testle kilitli.
+
 ## Sırada ne var
 
-Veritabanı ve kullanıcı girişi tamam. Sırada: ev arkadaşı paylaşımı (şema
-hazır, arayüz yok), e-posta/push bildirimleri ve tam çevrimdışı yazma.
+1. Yukarıdaki alanların forma eklenmesi, geçmiş tarih uyarısı
+2. "Çöpe gitti" düğmesi ve **geçmiş ekranı** — tüketilen/çöpe giden kayıtlar
+   silinmiyor, veritabanında duruyor ama henüz gösterilmiyor
+3. Kategori / saklama yeri / durum filtreleri
+4. Kategoriye göre varsayılan raf ömrü önerisi, bildirimler, istatistik paneli
+5. Ev arkadaşı paylaşımı — şema hazır, arayüz yok
+
+Bilinen açık bulgular (gerekçeleriyle):
+[`INCELEME_BULGULARI.md`](INCELEME_BULGULARI.md). Adım adım geliştirme kaydı:
+[`GELISTIRME_NOTLARI.md`](GELISTIRME_NOTLARI.md).
