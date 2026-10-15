@@ -920,3 +920,94 @@ kaldırılabilir.
 - `doctor` ve `rls-check` panelde üç test kullanıcısı bıraktı
   (`bayatlamasavar-...@test.local`); Authentication → Users altından
   silinebilir.
+
+---
+
+## Adım 16 — Veri modeli göçü: raf ömründen son kullanma tarihine (v1 → v2)
+
+**Tarih:** 15 Ekim 2026
+**Kapsam kararı:** Yeni özellik eklenmedi. Yalnızca model göçtü ve uygulama
+çalışır halde bırakıldı. Form alanları, yeni filtreler ve geçmiş ekranı
+bir sonraki adımda.
+
+### Neden göç gerekti
+Yeni gereksinim listesi ürünü "son kullanma tarihi" üzerinden tanımlıyor;
+mevcut model ise `açılış tarihi + raf ömrü` tutup son kullanma tarihini
+**hesaplıyordu**. İkisi aynı sonuca varır ama farklı alanı kaynak kabul eder.
+Barkod, kiler ürünleri ve ambalajı hiç açılmamış ürünler ancak SKT merkezli
+modelde temsil edilebiliyor.
+
+### Yeni model
+
+| Alan | Not |
+| --- | --- |
+| `expiresOn` | **Ana alan.** Renk, sıralama ve filtreler bunu kullanır |
+| `quantity` + `unit` | Pozitif; ondalık olabilir (0.5 kg) |
+| `storagePlace` | Buzdolabı / Dondurucu / Kiler |
+| `isOpened` + `openedAt` | Açılmamış üründe `openedAt` her zaman `null` |
+| `state` | `active` / `consumed` / `discarded` — kayıt **silinmez** |
+| `createdAt` | v1'den gelen kayıtlarda bilinmediği için `null` |
+
+Kategori kümesi 4'ten 7'ye çıktı. Eşleme: `Et/Şarküteri → Et`,
+`Sos/Konserve → Diğer`, diğerleri aynı kaldı.
+
+**Renk eşiği değişti:** 3 gün artık `safe` değil `warning`. Tek satırlık bir
+değişiklik ama davranış değişikliği; `statusOf` testi bunu kırmızı gösterdi.
+
+### Doğrulamanın hoşgörüsü nerede biter
+`parseProduct` artık iki sınıf alan tanıyor:
+
+- **Görünüm alanları** (birim, saklama yeri, miktar, durum): bilinmeyen değer
+  makul bir varsayılana düşer. Yanlış birim kullanıcıyı yanıltmaz.
+- **Son kullanma tarihi**: bozuksa kayıt **tamamen reddedilir**. Hatalı tarih
+  bozulmuş ürünü taze gösterebilir; bu yüzden hoşgörü burada biter.
+
+Bu ayrım yeni değil, v1'deki "bozuk veri sessizce yeşil görünmesin" kuralının
+genişletilmiş hali.
+
+### TDD akışı
+Her döngüde önce kırmızı görüldü:
+
+| Döngü | Kırmızı kanıtı |
+| --- | --- |
+| `date.ts` | 14 test düştü; aralarında **"tam 3 gün dikkat eşiğine girer"** — eşik değişikliğinin gerçekten davranış değiştirdiğinin kanıtı |
+| `product-schema.ts` | 26 test düştü (yeni alanlar + v1→v2 göçü) |
+| `product-api.ts` | 10 test düştü (kolon eşlemesi) |
+| `ProductCard` | 13 test düştü |
+| `ProductForm` | 9 test düştü |
+
+**Test 198 → 221.** Dörtlü doğrulama yeşil.
+
+### İki testin niyeti korunup yöntemi değişti
+- `ProductCard` "kategoriyi gösterir": kategori artık miktarla aynı düğümde
+  (`Süt Ürünü · 1 L`), tam metin eşleşmesi yerine desen kullanıldı.
+- `product-cache` "bozuk kaydı atar": test `shelfLifeDays`'i bozuyordu, o alan
+  artık yok — kayıt geçerli kalıyordu. Bozulan alan `expiresOn` yapıldı, yani
+  test tekrar **gerçek** bir reddi sınıyor.
+
+### Formun göstermediğini ezmemesi
+`ProductForm` bu adımda yalnızca ad, kategori ve SKT gösteriyor; miktar,
+saklama yeri ve açılma bilgisi varsayılanla doluyor. Düzenleme kipinde bu
+alanların **olduğu gibi korunması** ayrı bir testle kilitlendi
+(`formda olmayan alanları olduğu gibi korur`) — yoksa bir ürünü düzenlemek
+görünmeyen alanları sessizce sıfırlardı.
+
+### Varsayılan tarih kaldırıldı
+v1'de tarih alanı "bugün" ile doluyordu (açılış tarihi için doğru). SKT için
+"bugün" yanlış varsayılan olurdu — her ürün bugün bitiyormuş gibi görünürdü.
+Alan şimdilik **boş ve zorunlu**; kategoriye göre öneri Aşama 2'nin işi.
+`today` prop'u bu yüzden formdan çıkarıldı.
+
+### Veritabanı
+`supabase/migrations/0002_son_kullanma_tarihi.sql`. Mevcut veri kaybolmuyor:
+`expires_on = opened_at + shelf_life_days` ile üretiliyor, eski kayıtlar
+`is_opened = true` sayılıyor, `consumed_at` dolu olanlar `state = 'consumed'`
+oluyor. 0001'de olduğu gibi Türkçe metinler Unicode kaçışıyla yazıldı
+(dosyada tek bir ASCII dışı karakter yok).
+
+### Açık kalanlar
+- **Migration kullanıcı tarafından panelde uygulanmalı.** Uygulanana kadar
+  canlı uygulama çalışmaz; kod artık `state` ve `expires_on` kolonlarını
+  soruyor.
+- Aşama 1'in kalanı: form alanları, geçmiş tarih uyarısı, kategori/saklama
+  yeri/durum filtreleri, "Çöpe gitti" düğmesi, geçmiş ekranı.

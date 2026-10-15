@@ -18,7 +18,7 @@ import ProductForm from "@/components/ProductForm";
 import Toast from "@/components/Toast";
 import UndoToast from "@/components/UndoToast";
 import type { Product } from "@/types/product";
-import { daysLeft } from "@/lib/date";
+import { daysUntil } from "@/lib/date";
 import {
   countByStatus,
   filterProducts,
@@ -77,8 +77,7 @@ export default function Home() {
     () =>
       [...products].sort(
         (a, b) =>
-          daysLeft(a.openedAt, a.shelfLifeDays, today) -
-          daysLeft(b.openedAt, b.shelfLifeDays, today),
+          daysUntil(a.expiresOn, today) - daysUntil(b.expiresOn, today),
       ),
     [products, today],
   );
@@ -197,7 +196,6 @@ export default function Home() {
 
       <ProductForm
         key={editing?.id ?? "yeni"}
-        today={today}
         initial={editing}
         onSubmit={handleSubmit}
         onCancel={() => setEditingId(null)}

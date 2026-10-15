@@ -4,28 +4,41 @@ import type { Product } from "@/types/product";
 
 const TODAY = "2026-10-14";
 
-// TODAY'e göre: milk 3 gün (safe), sauce 1 gün (warning), ham -1 gün (expired)
-const milk: Product = {
+/** Testin ilgilenmediği alanları tekrar tekrar yazmamak için */
+function urun(patch: Partial<Product> & Pick<Product, "id" | "name">): Product {
+  return {
+    category: "Diğer",
+    quantity: 1,
+    unit: "adet",
+    expiresOn: "2026-10-20",
+    storagePlace: "Buzdolabı",
+    isOpened: false,
+    openedAt: null,
+    state: "active",
+    createdAt: null,
+    ...patch,
+  };
+}
+
+// TODAY'e göre: milk 6 gün (safe), sauce 1 gün (warning), ham -1 gün (expired)
+const milk = urun({
   id: "m",
   name: "Sütaş Süt",
   category: "Süt Ürünü",
-  openedAt: "2026-10-14",
-  shelfLifeDays: 3,
-};
-const sauce: Product = {
+  expiresOn: "2026-10-20",
+});
+const sauce = urun({
   id: "s",
   name: "Tat Salça",
-  category: "Sos/Konserve",
-  openedAt: "2026-10-08",
-  shelfLifeDays: 7,
-};
-const ham: Product = {
+  category: "Sebze",
+  expiresOn: "2026-10-15",
+});
+const ham = urun({
   id: "h",
   name: "Ilık Jambon",
-  category: "Et/Şarküteri",
-  openedAt: "2026-10-10",
-  shelfLifeDays: 3,
-};
+  category: "Et",
+  expiresOn: "2026-10-13",
+});
 
 const all = [milk, sauce, ham];
 
@@ -65,8 +78,8 @@ describe("filterProducts — arama", () => {
 
   test("kategoride geçeni de bulur", () => {
     expect(
-      filterProducts(all, { query: "şarküteri", status: "all" }, TODAY),
-    ).toEqual([ham]);
+      filterProducts(all, { query: "sebze", status: "all" }, TODAY),
+    ).toEqual([sauce]);
   });
 
   test("eşleşme yoksa boş döner", () => {

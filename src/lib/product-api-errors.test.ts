@@ -10,8 +10,14 @@ const product: Product = {
   id: "p1",
   name: "Sütaş Süt",
   category: "Süt Ürünü",
+  quantity: 1,
+  unit: "L",
+  expiresOn: "2099-01-01",
+  storagePlace: "Buzdolabı",
+  isOpened: true,
   openedAt: "2026-10-14",
-  shelfLifeDays: 3,
+  state: "active",
+  createdAt: "2026-10-14",
 };
 
 type Resp = { data?: unknown; error?: unknown; status?: number };
@@ -141,17 +147,17 @@ describe("product-api — yazmanın gerçekten olduğunun doğrulanması", () =>
     expect(ops.map(([op]) => op)).toContain("select");
   });
 
-  test("setConsumedAt 0 satır etkilediyse FIRLATIR", async () => {
+  test("setState 0 satır etkilediyse FIRLATIR", async () => {
     const { client } = fakeClient({ data: [], error: null, status: 200 });
     const api = createProductApi(client);
 
-    await expect(api.setConsumedAt("p1", null)).rejects.toThrow();
+    await expect(api.setState("p1", "consumed")).rejects.toThrow();
   });
 
-  test("setConsumedAt satır döndüyse fırlatmaz", async () => {
+  test("setState satır döndüyse fırlatmaz", async () => {
     const { client } = fakeClient({ data: [{ id: "p1" }] });
     await expect(
-      createProductApi(client).setConsumedAt("p1", null),
+      createProductApi(client).setState("p1", "consumed"),
     ).resolves.toBeUndefined();
   });
 });

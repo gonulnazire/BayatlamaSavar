@@ -14,15 +14,15 @@ için bağlantı gerekir.
 Her ürün için tek bir hesap yapılır:
 
 ```
-Kalan Gün = (Açılış Tarihi + Raf Ömrü) − Bugün
+Kalan Gün = Son Kullanma Tarihi − Bugün
 ```
 
 Kart rengi bu sonuca göre belirlenir:
 
 | Kalan gün | Durum | Renk |
 | --- | --- | --- |
-| 3 veya daha fazla | Güvenli | 🟢 yeşil |
-| 1–2 gün | Dikkat | 🟡 sarı |
+| 3 günden fazla | Güvenli | 🟢 yeşil |
+| 1–3 gün | Dikkat | 🟡 sarı |
 | 0 veya geçmiş | Süresi Doldu | 🔴 kırmızı |
 
 Liste her zaman **en acil ürün en üstte** olacak şekilde sıralanır. Sayfa açık

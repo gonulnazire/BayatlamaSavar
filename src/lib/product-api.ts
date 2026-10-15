@@ -1,5 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { Product } from "@/types/product";
+import type { Product, ProductState } from "@/types/product";
 import { parseProduct } from "@/lib/product-schema";
 
 export type ProductRow = {
@@ -7,14 +7,37 @@ export type ProductRow = {
   household_id: string;
   name: string;
   category: string;
-  opened_at: string;
-  shelf_life_days: number;
+  quantity: number;
+  unit: string;
+  expires_on: string;
+  storage_place: string;
+  is_opened: boolean;
+  opened_at: string | null;
+  state: string;
+  state_changed_at: string | null;
   created_by: string;
   created_at: string;
-  consumed_at: string | null;
 };
 
-export type ProductInsert = Omit<ProductRow, "created_at" | "consumed_at">;
+export type ProductInsert = Omit<
+  ProductRow,
+  "created_at" | "state_changed_at"
+>;
+
+/**
+ * `created_at` sunucuda timestamptz; modelde yalnızca tarih taşınır.
+ * Kullanıcının gördüğü "eklenme tarihi" kendi saat dilimindeki gün olmalı,
+ * bu yüzden metni kesmek yerine yerel takvime çevriliyor.
+ */
+function toLocalDate(value: unknown): string | null {
+  if (typeof value !== "string" || value === "") return null;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
 
 /** Sunucu satırını Product'a çevirir; doğrulamayı parseProduct yapar */
 export function toProduct(row: unknown): Product | null {
@@ -25,14 +48,20 @@ export function toProduct(row: unknown): Product | null {
     id: r.id,
     name: r.name,
     category: r.category,
+    quantity: r.quantity,
+    unit: r.unit,
+    expiresOn: r.expires_on,
+    storagePlace: r.storage_place,
+    isOpened: r.is_opened,
     openedAt: r.opened_at,
-    shelfLifeDays: r.shelf_life_days,
+    state: r.state,
+    createdAt: toLocalDate(r.created_at),
   });
 }
 
 /**
  * Product'ı sunucu satırına çevirir.
- * `opened_at` metin olarak taşınır — `Date` nesnesine çevrilip tekrar metne
+ * Tarihler metin olarak taşınır — `Date` nesnesine çevrilip tekrar metne
  * dönerse cihazın saat diliminde gün kayar.
  */
 export function toRow(
@@ -45,8 +74,13 @@ export function toRow(
     household_id: householdId,
     name: product.name,
     category: product.category,
+    quantity: product.quantity,
+    unit: product.unit,
+    expires_on: product.expiresOn,
+    storage_place: product.storagePlace,
+    is_opened: product.isOpened,
     opened_at: product.openedAt,
-    shelf_life_days: product.shelfLifeDays,
+    state: product.state,
     created_by: userId,
   };
 }
@@ -110,7 +144,7 @@ export type ProductApi = {
     userId: string,
   ): Promise<void>;
   updateProduct(product: Product): Promise<void>;
-  setConsumedAt(id: string, value: string | null): Promise<void>;
+  setState(id: string, state: ProductState): Promise<void>;
 };
 
 export function createProductApi(client: SupabaseClient): ProductApi {
@@ -131,7 +165,7 @@ export function createProductApi(client: SupabaseClient): ProductApi {
         .from("products")
         .select("*")
         .eq("household_id", householdId)
-        .is("consumed_at", null);
+        .eq("state", "active");
       if (error) throw toApiError(error, status);
 
       const products: Product[] = [];
@@ -168,8 +202,12 @@ export function createProductApi(client: SupabaseClient): ProductApi {
         .update({
           name: product.name,
           category: product.category,
+          quantity: product.quantity,
+          unit: product.unit,
+          expires_on: product.expiresOn,
+          storage_place: product.storagePlace,
+          is_opened: product.isOpened,
           opened_at: product.openedAt,
-          shelf_life_days: product.shelfLifeDays,
         })
         .eq("id", product.id)
         .select("id");
@@ -180,10 +218,14 @@ export function createProductApi(client: SupabaseClient): ProductApi {
       assertAffected(data, "Ürün güncellenemedi");
     },
 
-    async setConsumedAt(id, value) {
+    async setState(id, state) {
       const { data, error, status } = await client
         .from("products")
-        .update({ consumed_at: value })
+        .update({
+          state,
+          // Aktife dönen ürün geçmişten çıkar; damga da temizlenir
+          state_changed_at: state === "active" ? null : new Date().toISOString(),
+        })
         .eq("id", id)
         .select("id");
       if (error) throw toApiError(error, status);
@@ -208,6 +250,6 @@ export function lazyProductApi(getClient: () => SupabaseClient): ProductApi {
     insertProduct: (p, h, u) => resolve().insertProduct(p, h, u),
     insertProducts: (ps, h, u) => resolve().insertProducts(ps, h, u),
     updateProduct: (p) => resolve().updateProduct(p),
-    setConsumedAt: (id, value) => resolve().setConsumedAt(id, value),
+    setState: (id, state) => resolve().setState(id, state),
   };
 }

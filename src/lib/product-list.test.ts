@@ -7,8 +7,14 @@ function make(id: string, name = id): Product {
     id,
     name,
     category: "Diğer",
-    openedAt: "2026-10-14",
-    shelfLifeDays: 3,
+    quantity: 1,
+    unit: "adet",
+    expiresOn: "2026-10-20",
+    storagePlace: "Buzdolabı",
+    isOpened: false,
+    openedAt: null,
+    state: "active",
+    createdAt: null,
   };
 }
 

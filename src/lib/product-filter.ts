@@ -1,5 +1,5 @@
 import type { Product } from "@/types/product";
-import { daysLeft, statusOf, type Status } from "@/lib/date";
+import { daysUntil, statusOf, type Status } from "@/lib/date";
 
 export type StatusFilter = "all" | Status;
 
@@ -49,7 +49,7 @@ export function filterProducts(
   return products.filter((product) => {
     if (!matchesQuery(product, query)) return false;
     if (filters.status === "all") return true;
-    const days = daysLeft(product.openedAt, product.shelfLifeDays, today);
+    const days = daysUntil(product.expiresOn, today);
     return statusOf(days) === filters.status;
   });
 }
@@ -67,7 +67,7 @@ export function countByStatus(
   };
 
   for (const product of products) {
-    const days = daysLeft(product.openedAt, product.shelfLifeDays, today);
+    const days = daysUntil(product.expiresOn, today);
     counts[statusOf(days)] += 1;
   }
 

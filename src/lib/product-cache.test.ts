@@ -10,16 +10,22 @@ const milk: Product = {
   id: "m1",
   name: "Sütaş Süt",
   category: "Süt Ürünü",
+  quantity: 1,
+  unit: "L",
+  expiresOn: "2026-10-20",
+  storagePlace: "Buzdolabı",
+  isOpened: true,
   openedAt: "2026-10-14",
-  shelfLifeDays: 3,
+  state: "active",
+  createdAt: "2026-10-14",
 };
 
 const sauce: Product = {
+  ...milk,
   id: "s1",
   name: "Tat Salça",
-  category: "Sos/Konserve",
-  openedAt: "2026-10-10",
-  shelfLifeDays: 7,
+  category: "Diğer",
+  expiresOn: "2026-10-17",
 };
 
 function wrap(products: unknown[]): string {
@@ -48,7 +54,7 @@ describe("productCache", () => {
   test("bozuk kaydı atar, sağlamı korur", () => {
     localStorage.setItem(
       CACHE_KEY,
-      wrap([milk, { ...sauce, shelfLifeDays: "yedi" }]),
+      wrap([milk, { ...sauce, expiresOn: "2026-02-30" }]),
     );
     expect(productCache.read()).toEqual([milk]);
   });

@@ -141,13 +141,13 @@ Kurulum adımları [`KURULUM.md`](KURULUM.md)'de. İki doğrulama komutu:
 ### İş kuralları
 
 ```
-Kalan Gün = (Açılış Tarihi + Raf Ömrü) − Bugün
+Kalan Gün = Son Kullanma Tarihi − Bugün
 ```
 
 | Kalan gün | Durum | Renk |
 | --- | --- | --- |
-| ≥ 3 | `safe` | yeşil |
-| 1–2 | `warning` | sarı |
+| > 3 | `safe` | yeşil |
+| 1–3 | `warning` | sarı |
 | ≤ 0 | `expired` | kırmızı |
 
 Eşikler `statusOf()` içinde tek yerde durur ve testle kilitlidir; renk sınıfları
@@ -228,7 +228,7 @@ Aşağıdakilerin hepsi bir kez canlı olarak yaşandı; detaylar
 
 Vitest **jsdom** ortamında koşar (`vitest.config.mts`), kurulum dosyası
 `src/test/setup.ts` (jest-dom eşleştiricileri, her testten sonra `cleanup()` ve
-`localStorage.clear()`). Desen: `src/**/*.test.{ts,tsx}`. **198 test / 19 dosya:**
+`localStorage.clear()`). Desen: `src/**/*.test.{ts,tsx}`. **221 test / 19 dosya:**
 
 | Dosya | Test | Neyi kapsıyor |
 | --- | --- | --- |

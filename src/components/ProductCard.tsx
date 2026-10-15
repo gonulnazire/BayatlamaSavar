@@ -1,8 +1,8 @@
 "use client";
 
-import { Trash2, CalendarDays, Pencil } from "lucide-react";
+import { Trash2, CalendarDays, MapPin, Pencil } from "lucide-react";
 import type { Product } from "@/types/product";
-import { daysLeft, formatDate, statusOf, type Status } from "@/lib/date";
+import { daysUntil, formatDate, statusOf, type Status } from "@/lib/date";
 
 type Props = {
   product: Product;
@@ -48,7 +48,7 @@ export default function ProductCard({
   onConsume,
   disabled = false,
 }: Props) {
-  const days = daysLeft(product.openedAt, product.shelfLifeDays, today);
+  const days = daysUntil(product.expiresOn, today);
   const status = statusOf(days);
   const styles = STATUS_STYLES[status];
 
@@ -61,7 +61,9 @@ export default function ProductCard({
           <h3 className="truncate font-semibold text-slate-100">
             {product.name}
           </h3>
-          <p className="mt-0.5 text-xs text-slate-400">{product.category}</p>
+          <p className="mt-0.5 text-xs text-slate-400">
+            {product.category} · {product.quantity} {product.unit}
+          </p>
         </div>
         <span
           className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-medium ${styles.badge}`}
@@ -74,11 +76,19 @@ export default function ProductCard({
         {remainingText(days)}
       </p>
 
-      <div className="flex items-center gap-1.5 text-xs text-slate-500">
-        <CalendarDays size={14} />
-        <span>
-          {formatDate(product.openedAt)} tarihinde açıldı ·{" "}
-          {product.shelfLifeDays} günlük
+      <div className="flex flex-col gap-1 text-xs text-slate-500">
+        <span className="flex items-center gap-1.5">
+          <CalendarDays size={14} />
+          <span>Son kullanma: {formatDate(product.expiresOn)}</span>
+        </span>
+        <span className="flex items-center gap-1.5">
+          <MapPin size={14} />
+          <span>
+            {product.storagePlace}
+            {product.isOpened && product.openedAt
+              ? ` · ${formatDate(product.openedAt)} tarihinde açıldı`
+              : ""}
+          </span>
         </span>
       </div>
 

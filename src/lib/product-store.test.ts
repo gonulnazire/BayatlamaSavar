@@ -12,16 +12,22 @@ const milk: Product = {
   id: "m1",
   name: "Sütaş Süt",
   category: "Süt Ürünü",
+  quantity: 1,
+  unit: "L",
+  expiresOn: "2026-10-20",
+  storagePlace: "Buzdolabı",
+  isOpened: true,
   openedAt: "2026-10-14",
-  shelfLifeDays: 3,
+  state: "active",
+  createdAt: "2026-10-14",
 };
 
 const sauce: Product = {
+  ...milk,
   id: "s1",
   name: "Tat Salça",
-  category: "Sos/Konserve",
-  openedAt: "2026-10-10",
-  shelfLifeDays: 7,
+  category: "Diğer",
+  expiresOn: "2026-10-17",
 };
 
 function fakeApi(overrides: Partial<ProductApi> = {}): ProductApi {
@@ -31,7 +37,7 @@ function fakeApi(overrides: Partial<ProductApi> = {}): ProductApi {
     insertProduct: vi.fn(async () => {}),
     insertProducts: vi.fn(async () => {}),
     updateProduct: vi.fn(async () => {}),
-    setConsumedAt: vi.fn(async () => {}),
+    setState: vi.fn(async () => {}),
     ...overrides,
   };
 }
@@ -243,11 +249,11 @@ describe("product-store — yazma", () => {
 
     await store.consumeProduct("m1");
 
-    expect(api.setConsumedAt).toHaveBeenCalledWith("m1", expect.any(String));
+    expect(api.setState).toHaveBeenCalledWith("m1", "consumed");
     expect(store.getSnapshot().products).toEqual([sauce]);
   });
 
-  test("restoreProduct başarılıysa consumed_at null yazar ve listeye geri alır", async () => {
+  test("restoreProduct başarılıysa durumu aktife çevirir ve listeye geri alır", async () => {
     const api = fakeApi();
     const store = createProductStore(api, productCache);
     await store.init(USER);
@@ -257,7 +263,7 @@ describe("product-store — yazma", () => {
 
     await store.restoreProduct("m1");
 
-    expect(api.setConsumedAt).toHaveBeenLastCalledWith("m1", null);
+    expect(api.setState).toHaveBeenLastCalledWith("m1", "active");
     expect(store.getSnapshot().products).toContainEqual(milk);
   });
 

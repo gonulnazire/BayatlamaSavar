@@ -272,7 +272,7 @@ export function createProductStore(
 
     async consumeProduct(id) {
       await write(async () => {
-        await api.setConsumedAt(id, new Date().toISOString());
+        await api.setState(id, "consumed");
         const target = snapshot.products.find((p) => p.id === id);
         if (target) consumed.set(id, target);
         commit(snapshot.products.filter((p) => p.id !== id));
@@ -310,7 +310,7 @@ export function createProductStore(
 
     async restoreProduct(id) {
       await write(async () => {
-        await api.setConsumedAt(id, null);
+        await api.setState(id, "active");
         const target = consumed.get(id);
         if (!target) {
           // Başka bir sekmede tüketilmişse yerelde kaydı yok; sunucudan al

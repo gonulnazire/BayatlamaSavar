@@ -13,13 +13,19 @@ import type { Product } from "@/types/product";
 const USER = "u1";
 const HOUSEHOLD = "h1";
 
-// Bugüne göre 3 gün kalır (Güvenli)
+// Son kullanma tarihi uzak: test takvime bağlı kalmasın
 const milk: Product = {
   id: "m1",
   name: "Sütaş Süt",
   category: "Süt Ürünü",
+  quantity: 1,
+  unit: "L",
+  expiresOn: "2099-01-01",
+  storagePlace: "Buzdolabı",
+  isOpened: true,
   openedAt: "2026-10-14",
-  shelfLifeDays: 3,
+  state: "active",
+  createdAt: "2026-10-14",
 };
 
 function fakeApi(overrides: Partial<ProductApi> = {}): ProductApi {
@@ -29,7 +35,7 @@ function fakeApi(overrides: Partial<ProductApi> = {}): ProductApi {
     insertProduct: vi.fn(async () => {}),
     insertProducts: vi.fn(async () => {}),
     updateProduct: vi.fn(async () => {}),
-    setConsumedAt: vi.fn(async () => {}),
+    setState: vi.fn(async () => {}),
     ...overrides,
   };
 }
@@ -99,6 +105,10 @@ describe("Ana sayfa — bütünleşme", () => {
     await screen.findByText("Sütaş Süt");
 
     await userEvent.type(screen.getByLabelText("Ürün Adı"), "Pınar Labne");
+    await userEvent.type(
+      screen.getByLabelText("Son Kullanma Tarihi"),
+      "2099-01-01",
+    );
     await userEvent.click(screen.getByRole("button", { name: "Ekle" }));
 
     expect(await screen.findByText("Pınar Labne")).toBeInTheDocument();
@@ -119,7 +129,7 @@ describe("Ana sayfa — bütünleşme", () => {
       ).not.toBeInTheDocument();
     });
     expect(screen.getByRole("button", { name: "Geri al" })).toBeInTheDocument();
-    expect(api.setConsumedAt).toHaveBeenCalledWith("m1", expect.any(String));
+    expect(api.setState).toHaveBeenCalledWith("m1", "consumed");
   });
 
   test("geri al akışı: bildirimden geri alınır, ürün listeye döner", async () => {
@@ -134,7 +144,7 @@ describe("Ana sayfa — bütünleşme", () => {
     expect(
       await screen.findByRole("heading", { name: "Sütaş Süt" }),
     ).toBeInTheDocument();
-    expect(api.setConsumedAt).toHaveBeenLastCalledWith("m1", null);
+    expect(api.setState).toHaveBeenLastCalledWith("m1", "active");
   });
 
   test("yazma hatası: liste değişmez, hata bildirimi görünür", async () => {
@@ -147,6 +157,10 @@ describe("Ana sayfa — bütünleşme", () => {
     await screen.findByText("Sütaş Süt");
 
     await userEvent.type(screen.getByLabelText("Ürün Adı"), "Kaşar");
+    await userEvent.type(
+      screen.getByLabelText("Son Kullanma Tarihi"),
+      "2099-01-01",
+    );
     await userEvent.click(screen.getByRole("button", { name: "Ekle" }));
 
     expect(await screen.findByText(/Bağlantı kurulamadı/)).toBeInTheDocument();

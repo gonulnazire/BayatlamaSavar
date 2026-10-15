@@ -5,8 +5,6 @@ import { Check, Plus, X } from "lucide-react";
 import { CATEGORIES, type Category, type Product } from "@/types/product";
 
 type Props = {
-  /** Varsayılan açılış tarihi (istemcide hesaplanır) */
-  today: string;
   /**
    * Doluysa form düzenleme kipindedir ve alanlar bu kayıttan dolar.
    * Üst bileşen `key` ile formu yeniden kurar; bu sayede alanları
@@ -19,8 +17,22 @@ type Props = {
   saving?: boolean;
 };
 
+/**
+ * Formun henüz göstermediği alanların yeni ürün için varsayılanları.
+ * Miktar/birim, saklama yeri ve açılma bilgisi bir sonraki adımda
+ * arayüze gelecek; model şimdiden taşıyor.
+ */
+const VARSAYILANLAR = {
+  quantity: 1,
+  unit: "adet",
+  storagePlace: "Buzdolabı",
+  isOpened: false,
+  openedAt: null,
+  state: "active",
+  createdAt: null,
+} as const;
+
 export default function ProductForm({
-  today,
   initial,
   onSubmit,
   onCancel,
@@ -32,29 +44,21 @@ export default function ProductForm({
   const [category, setCategory] = useState<Category>(
     initial?.category ?? CATEGORIES[0],
   );
-  // null = "kullanıcı dokunmadı", bugünün tarihi kullanılsın
-  const [openedAtInput, setOpenedAtInput] = useState<string | null>(
-    initial?.openedAt ?? null,
-  );
-  const [shelfLifeDays, setShelfLifeDays] = useState(
-    String(initial?.shelfLifeDays ?? 3),
-  );
-
-  const openedAt = openedAtInput ?? today;
+  const [expiresOn, setExpiresOn] = useState(initial?.expiresOn ?? "");
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     const trimmed = name.trim();
-    const days = Number(shelfLifeDays);
-    if (!trimmed || !openedAt || !Number.isFinite(days) || days < 0) return;
+    if (!trimmed || !expiresOn) return;
 
     try {
       await onSubmit({
-        id: initial?.id ?? crypto.randomUUID(),
+        // Düzenleme kipinde formda OLMAYAN alanlar olduğu gibi korunur;
+        // yoksa görünmeyen bir alan sessizce varsayılana döner.
+        ...(initial ?? { ...VARSAYILANLAR, id: crypto.randomUUID() }),
         name: trimmed,
         category,
-        openedAt,
-        shelfLifeDays: Math.floor(days),
+        expiresOn,
       });
     } catch {
       // Kaydedilemediyse alanlar KORUNUR: kullanıcı yazdığını kaybetmesin
@@ -64,8 +68,7 @@ export default function ProductForm({
     if (isEditing) return; // üst bileşen düzenleme kipini kapatır
     setName("");
     setCategory(CATEGORIES[0]);
-    setOpenedAtInput(null);
-    setShelfLifeDays("3");
+    setExpiresOn("");
   }
 
   const fieldClass =
@@ -124,38 +127,21 @@ export default function ProductForm({
         </div>
 
         <div>
-          <label htmlFor="openedAt" className={labelClass}>
-            Açılış Tarihi
+          <label htmlFor="expiresOn" className={labelClass}>
+            Son Kullanma Tarihi
           </label>
           <input
-            id="openedAt"
+            id="expiresOn"
             disabled={saving}
             type="date"
-            value={openedAt}
-            onChange={(e) => setOpenedAtInput(e.target.value)}
+            value={expiresOn}
+            onChange={(e) => setExpiresOn(e.target.value)}
             className={`${fieldClass} [color-scheme:dark]`}
             required
           />
         </div>
 
-        <div>
-          <label htmlFor="shelfLife" className={labelClass}>
-            Raf Ömrü (gün)
-          </label>
-          <input
-            id="shelfLife"
-            disabled={saving}
-            type="number"
-            min={0}
-            max={365}
-            value={shelfLifeDays}
-            onChange={(e) => setShelfLifeDays(e.target.value)}
-            className={fieldClass}
-            required
-          />
-        </div>
-
-        <div className="flex gap-3 sm:col-span-2 lg:col-span-3 lg:self-end">
+        <div className="flex gap-3 sm:col-span-2 lg:col-span-4">
           <button
             type="submit"
             disabled={saving}
